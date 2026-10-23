@@ -94,3 +94,21 @@ must not be generalized into new console bridge capabilities without testing.
 
 The fixture remains an empty logging world. Remote human client acceptance and
 TFE-only installation compatibility are still pending in the consuming project.
+
+### Separate local server/client verification
+
+Later on 2026-10-23, the same packaged fixture ran in two distinct processes on
+one Windows PC: Dedicated Server app 564390/build 3897293 (Unrestricted) and
+Fusion app 564310/build 3897313 (Unrestricted). The server logged `role=host`;
+the client connected through `127.0.0.1:27045`, loaded the fixture and logged
+`role=client`. Both reported world `_VERSION=nil`. The client then joined the
+simulation and the server recorded the player. The live-verified Script Always
+setting therefore survives saving/packaging and executes in the client context.
+
+This extends shared-fixture evidence, not the MCP's tool surface. No runtime
+process control or runtime-log tool is exposed. The consuming mod now accepts
+this local connection for its setup milestone and retains two-PC human gameplay
+as its next gate. Steam networking participated; offline-only transport, internet
+conditions and gameplay replication have not been established. The empty world
+still needs geometry/spawn/chapter before gameplay tests. An early server mode
+normalization diagnostic did not prevent joining, but remains unexplained.
