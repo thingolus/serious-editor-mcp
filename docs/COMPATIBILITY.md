@@ -76,3 +76,21 @@ Fourteen offline tests cover this addition, including enum rejection/restoration
 Repeat with `node scripts/live-script.js <entity-name>` and the same root/mutation
 environment variables as the locator test, outside simulation. This does not
 establish arbitrary resource binding, entity creation or playtest control.
+
+## Shared fixture follow-through
+
+The consuming mod's fixture was saved/reopened with `RC_Smoke` set to Always,
+then moved to `Content/ReverseCoop/Levels/Stage0/EditorMcpTest.wld`. Its isolated
+editor-authored title and seven-file package now load in Unrestricted after a
+full restart with no loose mod overrides. The world probe logs `role=host`.
+This is consumer runtime evidence, not a claim that the MCP runs inside the game.
+
+World-script logging differs from the editor console: `print` appeared in the
+editor log but not the runtime log. `conLogF(message .. "\n")` was verified in
+the runtime; it needs an explicit newline. World `_VERSION` remains nil. The
+consumer's own title bootstrap initializes `worldGlobals.worldInfo` from injected
+`worldInfo`; nested `dofile` did not inherit that injection. These observations
+must not be generalized into new console bridge capabilities without testing.
+
+The fixture remains an empty logging world. Remote human client acceptance and
+TFE-only installation compatibility are still pending in the consuming project.

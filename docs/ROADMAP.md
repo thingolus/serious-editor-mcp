@@ -59,7 +59,8 @@ operations here as those mod tasks need them; retain live checks for each one.
 
 Initial v0.3 progress: Script auto-run enum preview/apply/undo passed live; the
 consumer fixture now has a saved Script entity. Resource binding still uses the
-editor UI. Host/client runtime acceptance remains the consuming mod's gate.
+editor UI. Its isolated title and packaged host probe now load after a clean
+runtime restart. Separate-PC host/client acceptance remains the consuming mod's gate.
 
 - Verify entity creation/deletion and resource-reference inspection.
 - Add small reusable operations for route nodes, script bindings and transforms.
