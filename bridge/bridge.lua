@@ -107,7 +107,7 @@ local function dispatch(operation, encoded, id)
   local argument = unhex(encoded)
   if argument:find("%z") then error("Invalid property path") end
   if operation == "ping" then
-    return '{"bridgeVersion":"0.2.0","luaVersion":' .. quote(_VERSION) ..
+    return '{"bridgeVersion":"0.3.0","luaVersion":' .. quote(_VERSION) ..
       ',"readOnly":false,"undoMode":"conditional-property-restore","getMember":' .. tostring(type(edtGetMemberValue) == "function") ..
       ',"hasMember":' .. tostring(type(edtHasMemberValue) == "function") .. '}'
   elseif operation == "selection" then
@@ -153,7 +153,7 @@ end
 -- Ignore the pre-existing request on startup. A restart must never replay a mutation.
 local _, initial = pcall(strLoadText_unsigned, base .. "request.txt")
 local lastId = type(initial) == "string" and initial:gsub("\r\n", "\n"):match("^SE_MCP/1\n([a-f0-9%-]+)\n") or nil
-print("[EditorMCP] bridge 0.2.0 started; conditional edit/undo; stop with globals.EditorMcpBridgeState.running=false")
+print("[EditorMCP] bridge 0.3.0 started; conditional edit/undo; stop with globals.EditorMcpBridgeState.running=false")
 while state.running do
   local loaded, request = pcall(strLoadText_unsigned, base .. "request.txt")
   if loaded and type(request) == "string" and #request <= 16384 then

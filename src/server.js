@@ -30,7 +30,7 @@ export async function status(config) {
 }
 
 export function createServer(config = configuration()) {
-  const server = new McpServer({ name: 'serious-editor-mcp', version: '0.2.0' });
+  const server = new McpServer({ name: 'serious-editor-mcp', version: '0.3.0' });
   function tool(name, description, schema, handler, readOnly = true) {
     server.registerTool(name, {
       description,

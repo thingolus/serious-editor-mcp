@@ -5,7 +5,7 @@ import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/client/stdio';
 
 if (!process.env.SERIOUS_EDITOR_ROOT) throw new Error('Set SERIOUS_EDITOR_ROOT first.');
-const client = new Client({ name: 'serious-editor-live-smoke', version: '0.2.0' });
+const client = new Client({ name: 'serious-editor-live-smoke', version: '0.3.0' });
 const transport = new StdioClientTransport({ command: process.execPath,
   args: [fileURLToPath(new URL('../src/index.js', import.meta.url))],
   env: { ...getDefaultEnvironment(), SERIOUS_EDITOR_ROOT: process.env.SERIOUS_EDITOR_ROOT } });
@@ -14,7 +14,7 @@ try {
   const tools = await client.listTools();
   const ping = await client.callTool({ name: 'editor_ping', arguments: {} });
   assert.ok(!ping.isError, JSON.stringify(ping));
-  assert.equal(ping.structuredContent.bridgeVersion, '0.2.0');
+  assert.equal(ping.structuredContent.bridgeVersion, '0.3.0');
   const missing = await client.callTool({ name: 'editor_has_member', arguments: { path: '__editor_mcp_intentionally_missing__' } });
   assert.ok(!missing.isError, JSON.stringify(missing));
   assert.equal(missing.structuredContent.exists, false);

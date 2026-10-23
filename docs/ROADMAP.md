@@ -57,6 +57,10 @@ This is the next shared mod/MCP milestone. Extend the original locator fixture
 with a verified script binding and host/client smoke probe. Add reusable authoring
 operations here as those mod tasks need them; retain live checks for each one.
 
+Initial v0.3 progress: Script auto-run enum preview/apply/undo passed live; the
+consumer fixture now has a saved Script entity. Resource binding still uses the
+editor UI. Host/client runtime acceptance remains the consuming mod's gate.
+
 - Verify entity creation/deletion and resource-reference inspection.
 - Add small reusable operations for route nodes, script bindings and transforms.
 - Use those operations to assist the mod's host/client smoke world, then its

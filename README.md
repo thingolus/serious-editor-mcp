@@ -8,8 +8,8 @@ Connect an MCP client to local package inspection, editor diagnostics and a smal
 Lua bridge running inside the editor. This is an independent community tool.
 You supply your own installed game and editor; no game assets are included.
 
-**v0.2 supports guarded property editing and undo.** You can preview, apply and
-undo entity-name and locator-Sphere changes on a captured selection. Both flows
+**v0.3 supports guarded property editing and undo.** You can preview, apply and
+undo entity-name, locator-Sphere and Script auto-run changes on a captured selection. These flows
 have passed real-editor tests. Undo restores that edit's previous property value;
 it does not invoke the editor's global undo command. World creation, saving,
 arbitrary property types and playtest control are still outside the tool's scope.
@@ -95,7 +95,8 @@ in an original test world, then:
 
 1. Call `editor_selection` and retain its `contextId`.
 2. Read the property. Verified writable paths are `ep_strName` (string, 1–128 UTF-8
-   bytes, no control characters) and `ep_bSphere` (boolean, on a locator).
+   bytes, no control characters), `ep_bSphere` (boolean, on a locator), and
+   `ep_satAutoRun` (`SAT_ONLYONHOST` or `SAT_ALWAYS`, on a Script entity).
 3. Call `editor_preview_edit` with `contextId`, `path`, `expectedValue`, `newValue`.
    Inspect its before/after values and retain the returned `editId`.
 4. Call `editor_apply_edit` with that `editId`, then read the property to inspect it.
@@ -163,6 +164,8 @@ pnpm run test:live
 # Explicit mutation test on the selected disposable locator; restores both values:
 $env:SERIOUS_EDITOR_ALLOW_MUTATION = '1'
 pnpm run test:live-edits RC_RouteStart
+# Select the disposable Script entity, then test and restore its auto-run setting:
+node scripts/live-script.js RC_Smoke
 ```
 
 Offline tests use disposable fake installations, original ZIP fixtures and the

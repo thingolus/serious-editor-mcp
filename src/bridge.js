@@ -27,7 +27,7 @@ export async function installBridge(root) {
   const request = await confinedPath(root, `${BRIDGE_DIRECTORY}/request.txt`);
   try { await fs.writeFile(request, '', { flag: 'wx' }); }
   catch (error) { if (error.code !== 'EEXIST') throw error; }
-  await atomicWrite(receiptPath, JSON.stringify({ version: '0.2.0', sha256: hash }, null, 2) + '\n');
+  await atomicWrite(receiptPath, JSON.stringify({ version: '0.3.0', sha256: hash }, null, 2) + '\n');
   return { installed: true, script: `${BRIDGE_DIRECTORY}/bridge.lua`, sha256: hash,
     start: 'In Serious Editor use Script > Run script from file and select Content/EditorMcp/bridge.lua. This tool does not start or auto-load it.' };
 }

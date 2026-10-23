@@ -15,7 +15,7 @@ Observed on 2026-10-23, Windows, Node.js 24.19.0, pnpm 11.25.0:
 | `edtHasMemberValue` | Missing path returns numeric zero; bridge normalizes zero to JSON false |
 | MCP stdio | SDK client negotiation tested in legacy and auto modes |
 | Live smoke | Ping, missing member, rejected missing read, ping after error and installed package listing pass |
-| Offline tests | Thirteen tests pass, including actual bridge state-machine execution in Fengari with fake engine functions |
+| Offline tests | Fourteen tests pass, including actual bridge state-machine execution in Fengari with fake engine functions |
 
 The live test was run from the editor start page with no world open. The engine
 reports a scene-interpreter diagnostic for scene property queries in that state.
@@ -61,7 +61,7 @@ editor. TFE-only compatibility, other editor builds, Linux/Wine and other Seriou
 Sam editors remain untested. Node 22 is the declared minimum; local verification
 used Node 24.19.0.
 
-## Pending: Script auto-run edits
+## v0.3: Script auto-run edits
 
 In the consuming mod's original test world, Script entity `ep_satAutoRun` was
 read through the live bridge: On host is `SAT_ONLYONHOST`, Always is `SAT_ALWAYS`.
@@ -69,9 +69,10 @@ The source resource property `ep_pssScriptSource` returns userdata, not a filena
 Binding a Lua file through the UI and starting simulation executed that source.
 World-script `_VERSION` returned nil; console Lua 5.1 is a separate observation.
 
-The local branch extends preview/apply/undo to the two observed auto-run values.
-Fourteen offline tests pass, including enum rejection and restoration. The new
-setter has not yet passed a live test; `node scripts/live-script.js <entity-name>`
-is prepared for that check with the same root/mutation environment variables as
-the locator test. Stop simulation first. Do not treat this pending work as a
-verified release or assume arbitrary resource binding is supported.
+Preview/apply/read-back/undo/read-back passed in the live editor on the consuming
+mod's original Script entity (ID 2): `SAT_ONLYONHOST` to `SAT_ALWAYS` and back.
+The fixture was then deliberately set to Always, bound through the UI and saved.
+Fourteen offline tests cover this addition, including enum rejection/restoration.
+Repeat with `node scripts/live-script.js <entity-name>` and the same root/mutation
+environment variables as the locator test, outside simulation. This does not
+establish arbitrary resource binding, entity creation or playtest control.
