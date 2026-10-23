@@ -2,6 +2,9 @@
 
 - This is a standalone MIT tool credited to Thingolus. Keep mod/gameplay code in
   its separate repository and never copy game assets into this one.
+- User preference: develop this MCP hand in hand with the reverse-co-op mod.
+  Exercise reusable editor operations on the mod's original fixtures, and update
+  evidence/plans in both repositories whenever a shared milestone advances.
 - Read README.md and docs/COMPATIBILITY.md before changing engine integration.
 - Verify engine behavior in the installed editor; record evidence and limitations.
   Console Lua and world scripts are different contexts.

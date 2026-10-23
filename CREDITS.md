@@ -16,6 +16,7 @@ Dependencies retain their respective licenses:
 - [Zod](https://github.com/colinhacks/zod): MIT.
 - [yauzl](https://github.com/thejoshwolfe/yauzl): MIT.
 - [yazl](https://github.com/thejoshwolfe/yazl): MIT (test fixture generation).
+- [Fengari](https://github.com/fengari-lua/fengari): MIT (offline Lua tests only).
 
 Reference material that informed interoperability research is linked in
 `docs/PROTOCOL.md`. Reference authors' code has not been copied into this project.

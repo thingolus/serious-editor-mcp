@@ -14,7 +14,11 @@ Keep proprietary assets and gameplay logic out of this repository.
 
 This proves connectivity, not full property access or world automation.
 
-## 1. Read a real editor scene — next gate
+## 1. Read a real editor scene — initial slice verified
+
+Verified: saved/reopened original locator, string and numeric member reads, single
+selection identity and no-selection rejection. Filename discovery and positive
+engine-reference serialization remain open. See COMPATIBILITY.md for exact scope.
 
 1. Create an original disposable world using the editor UI and save it under the
    consuming mod's namespace. Record its editor/build version.
@@ -28,7 +32,13 @@ This proves connectivity, not full property access or world automation.
 **Pass:** repeatable reads of known values from a reopened test world, with documented
 paths and errors. Add original fixtures and live checks for observed edge cases.
 
-## 2. One reversible edit
+## 2. One reversible edit — initial slice verified
+
+Verified: name and Sphere preview/apply/read-back/conditional-undo through MCP,
+stale-value rejection, mutation opt-in and saved fixture reopen. Native undo-stack
+integration is not implemented: the observed setter did not add an undo entry.
+The tool restores its own previous value after checking the target and current
+value. Saving is manual; the scripted save attempt did not update the file.
 
 1. Verify the editor's setter and undo/transaction APIs in the disposable world.
 2. Add a narrow property-edit operation with an explicit target and expected old
@@ -42,6 +52,10 @@ paths and errors. Add original fixtures and live checks for observed edge cases.
 separately saved original test world preserves the intended result.
 
 ## 3. Author the mod's feasibility world
+
+This is the next shared mod/MCP milestone. Extend the original locator fixture
+with a verified script binding and host/client smoke probe. Add reusable authoring
+operations here as those mod tasks need them; retain live checks for each one.
 
 - Verify entity creation/deletion and resource-reference inspection.
 - Add small reusable operations for route nodes, script bindings and transforms.
