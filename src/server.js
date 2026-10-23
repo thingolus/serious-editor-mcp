@@ -60,11 +60,14 @@ export function createServer(config = configuration()) {
     async () => requestEditor(await requireRoot(config), 'selection'));
   const editId = { editId: z.uuid().describe('Token returned by editor_preview_edit; never invent one.') };
   const value = z.union([z.string().min(1).max(128), z.boolean()]);
-  tool('editor_preview_edit', 'Preview an allowlisted property change on the captured selection with an expected old value. No world change. ep_strName accepts a string; ep_bSphere accepts a boolean.', {
-    contextId: z.uuid(), path: z.enum(['ep_strName', 'ep_bSphere']), expectedValue: value, newValue: value
+  tool('editor_preview_edit', 'Preview an allowlisted property change on the captured selection with an expected old value. No world change. ep_strName accepts a string; ep_bSphere accepts a boolean; ep_satAutoRun accepts SAT_ALWAYS or SAT_ONLYONHOST.', {
+    contextId: z.uuid(), path: z.enum(['ep_strName', 'ep_bSphere', 'ep_satAutoRun']), expectedValue: value, newValue: value
   }, async input => {
-    const expectedType = input.path === 'ep_strName' ? 'string' : 'boolean';
+    const expectedType = input.path === 'ep_bSphere' ? 'boolean' : 'string';
     for (const candidate of [input.expectedValue, input.newValue]) {
+      if (input.path === 'ep_satAutoRun' && !['SAT_ALWAYS', 'SAT_ONLYONHOST'].includes(candidate)) {
+        throw new Error('Script auto-run must be SAT_ALWAYS or SAT_ONLYONHOST.');
+      }
       if (typeof candidate !== expectedType || (typeof candidate === 'string' && (Buffer.byteLength(candidate) > 128 || /[\x00-\x1f]/.test(candidate)))) {
         throw new Error('Property value has the wrong type or exceeds the name limit (128 UTF-8 bytes, no control characters).');
       }

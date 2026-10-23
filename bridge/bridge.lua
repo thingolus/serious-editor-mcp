@@ -59,9 +59,13 @@ local function sameTarget(target)
   return current
 end
 local function property(path)
-  if path ~= "ep_strName" and path ~= "ep_bSphere" then error("Property is not in the verified edit allowlist") end
+  if path ~= "ep_strName" and path ~= "ep_bSphere" and path ~= "ep_satAutoRun" then error("Property is not in the verified edit allowlist") end
   if not hasMember(path) then error("Selected entity does not have this property") end
   local value = edtGetMemberValue(path)
+  if path == "ep_satAutoRun" then
+    if value ~= "SAT_ALWAYS" and value ~= "SAT_ONLYONHOST" then error("Unsupported script auto-run value") end
+    return value
+  end
   if path == "ep_strName" then
     if type(value) ~= "string" then error("Unexpected engine property type") end
     return value
@@ -71,6 +75,7 @@ local function property(path)
 end
 local function inputValue(path, kind, text)
   local value = unhex(text)
+  if path == "ep_satAutoRun" and kind == "s" and (value == "SAT_ALWAYS" or value == "SAT_ONLYONHOST") then return value end
   if path == "ep_strName" and kind == "s" then
     if #value < 1 or #value > 128 or value:find('[%z\1-\31]') then error("Name must be 1-128 bytes without control characters") end
     return value

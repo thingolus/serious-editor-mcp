@@ -60,3 +60,18 @@ The local installation includes TFE, TSE and BFE resources after installing the
 editor. TFE-only compatibility, other editor builds, Linux/Wine and other Serious
 Sam editors remain untested. Node 22 is the declared minimum; local verification
 used Node 24.19.0.
+
+## Pending: Script auto-run edits
+
+In the consuming mod's original test world, Script entity `ep_satAutoRun` was
+read through the live bridge: On host is `SAT_ONLYONHOST`, Always is `SAT_ALWAYS`.
+The source resource property `ep_pssScriptSource` returns userdata, not a filename.
+Binding a Lua file through the UI and starting simulation executed that source.
+World-script `_VERSION` returned nil; console Lua 5.1 is a separate observation.
+
+The local branch extends preview/apply/undo to the two observed auto-run values.
+Fourteen offline tests pass, including enum rejection and restoration. The new
+setter has not yet passed a live test; `node scripts/live-script.js <entity-name>`
+is prepared for that check with the same root/mutation environment variables as
+the locator test. Stop simulation first. Do not treat this pending work as a
+verified release or assume arbitrary resource binding is supported.

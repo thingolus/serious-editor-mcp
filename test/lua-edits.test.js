@@ -20,7 +20,7 @@ function run(steps, initial = '') {
   const requests = steps.map((step, i) => `{wire=${JSON.stringify(encodeRequest(id(i + 1), step.op, step.arg ?? ''))}, before=function() ${step.before ?? ''} end}`).join(',\n');
   const setup = `
     globals={}; math=nil; print=function() end
-    mock={name='Locator001',sphere=0,count=1,sets=0}
+    mock={name='Locator001',sphere=0,autorun='SAT_ALWAYS',count=1,sets=0}
     local document={_CT_OBJECT_USERDATA_={}}
     local entity={_CT_OBJECT_USERDATA_={}}
     function entity:GetEntityID() return 1 end
@@ -29,11 +29,11 @@ function run(steps, initial = '') {
     function guiGetActiveDocument() return mock.document end
     function edtCountSelectedEntityProperties() return mock.count end
     function edtGetSelectedEntityProperty() return mock.entity end
-    function edtHasMemberValue(p) return (p=='ep_strName' or p=='ep_bSphere') and 1 or 0 end
-    function edtGetMemberValue(p) if p=='ep_strName' then return mock.name else return mock.sphere end end
+    function edtHasMemberValue(p) return (p=='ep_strName' or p=='ep_bSphere' or p=='ep_satAutoRun') and 1 or 0 end
+    function edtGetMemberValue(p) if p=='ep_strName' then return mock.name elseif p=='ep_satAutoRun' then return mock.autorun else return mock.sphere end end
     function edtSetMemberValue(p,v)
       mock.sets=mock.sets+1
-      if p=='ep_strName' then mock.name=v else mock.sphere=v end
+      if p=='ep_strName' then mock.name=v elseif p=='ep_satAutoRun' then mock.autorun=v else mock.sphere=v end
       if mock.fail then error('simulated failure after write') end
     end
     function Delay() end
@@ -87,6 +87,24 @@ test('Lua bridge normalizes engine booleans and preserves strings as data', () =
   assert.equal(result.responses[2].after, true);
   assert.equal(result.mock.sets, 4);
   assert.equal(result.mock.name, 'Locator001');
+});
+
+test('script auto-run uses bounded enum values and conditional restoration', () => {
+  const result = run([
+    { op: 'selection' },
+    { op: 'preview_edit', arg: preview(1, 'ep_satAutoRun', 'SAT_ALWAYS', 'SAT_ONLYONHOST') },
+    { op: 'apply_edit', arg: id(2) },
+    { op: 'get_member', arg: 'ep_satAutoRun' },
+    { op: 'undo_edit', arg: id(2) },
+    { op: 'get_member', arg: 'ep_satAutoRun' },
+    { op: 'preview_edit', arg: preview(1, 'ep_satAutoRun', 'SAT_ALWAYS', 'INVENTED') },
+    { op: 'preview_edit', arg: preview(1, 'ep_satAutoRun', 'SAT_ALWAYS', true) }
+  ]);
+  assert.equal(result.responses[3].value, 'SAT_ONLYONHOST');
+  assert.equal(result.responses[5].value, 'SAT_ALWAYS');
+  assert.ok(result.responses[6].error);
+  assert.ok(result.responses[7].error);
+  assert.equal(result.mock.sets, 2);
 });
 
 test('Lua rejects stale values, changed entity/document, and multiple selections without writes', () => {
