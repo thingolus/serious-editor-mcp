@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "serious-editor": {
+      "command": "node",
+      "args": ["C:/path/to/serious-editor-mcp/src/index.js"],
+      "env": {
+        "SERIOUS_EDITOR_ROOT": "C:/Program Files (x86)/Steam/steamapps/common/Serious Sam Fusion 2017"
+      }
+    }
+  }
+}

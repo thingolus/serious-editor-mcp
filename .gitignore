@@ -1,0 +1,16 @@
+node_modules/
+local/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+*.gro
+*.wld
+*.rsc
+*.ep
+*.gtitle
+*.zip
+*.tgz
+Thumbs.db
+Desktop.ini

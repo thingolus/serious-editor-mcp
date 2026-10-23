@@ -1,0 +1,43 @@
+{
+  "name": "serious-editor-mcp",
+  "version": "0.1.0",
+  "description": "Independent MCP tools for Serious Editor, created by Thingolus.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Thingolus",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thingolus/serious-editor-mcp.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.25.0",
+  "bin": {
+    "serious-editor-mcp": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.js",
+    "test:live": "node scripts/live-smoke.js",
+    "check": "node --check src/index.js"
+  },
+  "files": [
+    "src",
+    "bridge",
+    "docs",
+    "examples",
+    "README.md",
+    "LICENSE",
+    "CREDITS.md"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.4.0",
+    "yauzl": "^3.2.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "yazl": "3.3.1"
+  }
+}
