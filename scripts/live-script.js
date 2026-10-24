@@ -8,7 +8,7 @@ const expectedName = process.argv[2];
 if (!expectedName || !process.env.SERIOUS_EDITOR_ROOT || process.env.SERIOUS_EDITOR_ALLOW_MUTATION !== '1') {
   throw new Error('Set SERIOUS_EDITOR_ROOT and SERIOUS_EDITOR_ALLOW_MUTATION=1; pass the exact selected disposable Script entity name. Stop simulation first.');
 }
-const client = new Client({ name: 'serious-editor-live-script', version: '0.3.0' });
+const client = new Client({ name: 'serious-editor-live-script', version: '0.4.0' });
 const transport = new StdioClientTransport({ command: process.execPath,
   args: [fileURLToPath(new URL('../src/index.js', import.meta.url))],
   env: { ...getDefaultEnvironment(), SERIOUS_EDITOR_ROOT: process.env.SERIOUS_EDITOR_ROOT, SERIOUS_EDITOR_ALLOW_MUTATION: '1' } });

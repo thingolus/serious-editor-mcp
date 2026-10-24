@@ -25,10 +25,15 @@ function run(steps, initial = '') {
     local entity={_CT_OBJECT_USERDATA_={}}
     function entity:GetEntityID() return 1 end
     function entity:GetName() return mock.name end
+    function entity:GetEntityClassName() return 'CLocatorEntity' end
+    function entity:GetPlacement() return {vx=2,vy=3,vz=4} end
     mock.document=document; mock.entity=entity
     function guiGetActiveDocument() return mock.document end
     function edtCountSelectedEntityProperties() return mock.count end
     function edtGetSelectedEntityProperty() return mock.entity end
+    function edtClearEntityPropertySelection() mock.count=0 end
+    function edtSelectAllEntityProperties() mock.count=mock.removed and 0 or 1 end
+    function edtSelectEntityProperty(e) mock.count=mock.count+1 end
     function edtHasMemberValue(p) return (p=='ep_strName' or p=='ep_bSphere' or p=='ep_satAutoRun') and 1 or 0 end
     function edtGetMemberValue(p) if p=='ep_strName' then return mock.name elseif p=='ep_satAutoRun' then return mock.autorun else return mock.sphere end end
     function edtSetMemberValue(p,v)
@@ -73,6 +78,26 @@ test('actual Lua bridge previews, applies once, reports and conditionally undoes
   assert.equal(result.responses[4].status, 'applied');
   assert.equal(result.responses[6].status, 'undone');
   assert.deepEqual(result.mock, { name: 'Locator001', sphere: 0, sets: 2 });
+});
+
+test('scene snapshots restore selection and reject stale documents and removed entities', () => {
+  const result=run([
+    {op:'scene',before:'mock.count=0'},
+    {op:'selection'},
+    {op:'select_entity',arg:`${id(1)}\n1`},
+    {op:'selection'},
+    {op:'select_entity',arg:`${id(1)}\n2`},
+    {op:'select_entity',arg:`${id(1)}\n1`,before:'mock.removed=true'},
+    {op:'select_entity',arg:`${id(1)}\n1`,before:'mock.document={_CT_OBJECT_USERDATA_={}}'}
+  ]);
+  assert.deepEqual(result.responses[0].entities,[{entityId:1,name:'Locator001',className:'CLocatorEntity',position:{x:2,y:3,z:4}}]);
+  assert.match(result.responses[1].error,/exactly one/);
+  assert.equal(result.responses[2].selected,true);
+  assert.equal(result.responses[3].entityId,1);
+  assert.match(result.responses[4].error,/Unknown/);
+  assert.match(result.responses[5].error,/removed or replaced/);
+  assert.match(result.responses[6].error,/document changed/);
+  assert.equal(result.mock.sets,0);
 });
 
 test('Lua bridge normalizes engine booleans and preserves strings as data', () => {

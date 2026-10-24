@@ -30,7 +30,7 @@ export async function status(config) {
 }
 
 export function createServer(config = configuration()) {
-  const server = new McpServer({ name: 'serious-editor-mcp', version: '0.3.0' });
+  const server = new McpServer({ name: 'serious-editor-mcp', version: '0.4.0' });
   function tool(name, description, schema, handler, readOnly = true) {
     server.registerTool(name, {
       description,
@@ -58,6 +58,11 @@ export function createServer(config = configuration()) {
     async input => requestEditor(await requireRoot(config), 'get_member', input.path));
   tool('editor_selection', 'Capture exactly one selected entity and retain its document/entity identity. Returns a session context token; document filename discovery is not supported.', {},
     async () => requestEditor(await requireRoot(config), 'selection'));
+  tool('editor_scene', 'Snapshot up to 200 unique entities in the current world, including names, classes and positions. Temporarily enumerates selection and restores it. Does not save or change entity properties.', {},
+    async () => requestEditor(await requireRoot(config), 'scene'));
+  tool('editor_select_entity', 'Select an entity from a recent editor_scene snapshot after checking the retained document and entity identity. Changes editor selection only; then use editor_selection to capture an edit context.', {
+    sceneId: z.uuid(), entityId: z.number().int().min(0).max(4294967295)
+  }, async input => requestEditor(await requireRoot(config), 'select_entity', `${input.sceneId}\n${input.entityId}`), false);
   const editId = { editId: z.uuid().describe('Token returned by editor_preview_edit; never invent one.') };
   const value = z.union([z.string().min(1).max(128), z.boolean()]);
   tool('editor_preview_edit', 'Preview an allowlisted property change on the captured selection with an expected old value. No world change. ep_strName accepts a string; ep_bSphere accepts a boolean; ep_satAutoRun accepts SAT_ALWAYS or SAT_ONLYONHOST.', {

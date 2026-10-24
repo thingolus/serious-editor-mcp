@@ -112,3 +112,31 @@ as its next gate. Steam networking participated; offline-only transport, interne
 conditions and gameplay replication have not been established. The empty world
 still needs geometry/spawn/chapter before gameplay tests. An early server mode
 normalization diagnostic did not prevent joining, but remains unexplained.
+
+## v0.4: scene inventory and verified selection
+
+Observed on 2026-10-24 on the same engine/editor builds. The consumer's original
+Stage 1 world has nine entities: world info, locator, script, chapter, floor,
+spawn, two lights and an experimental Gnaar. `editor_scene` returns unique IDs,
+names, runtime class names and placement coordinates, restoring the previous
+selection. `edtSelectAllEntityProperties` can append duplicates, so enumeration
+clears selection first and de-duplicates by ID.
+
+The real stdio MCP client passed inventory, selecting the locator and Script,
+selection preservation during a subsequent read, and rejection of an unknown ID.
+The existing locator name/Sphere and Script auto-run edit/undo tests also passed
+on the reopened world. Earlier in this session, selecting a deleted test entity
+from its previous snapshot was rejected by the live bridge. Fifteen offline
+tests pass, including changed-document and removed-entity rejection with no
+property writes. No simulation control, creation or save operation is exposed.
+
+Repeat with `node scripts/live-scene.js <entity-name>` and SERIOUS_EDITOR_ROOT
+set. This intentionally changes selection, leaves that target selected, and does
+not save the document. Run outside simulation in a disposable world. Eight scene
+snapshots are retained; a bridge restart discards them.
+
+Consumer experiments confirmed that console and world Lua differ: world `pcall`
+is absent, and several model setters are unavailable on runtime player puppets.
+An unconfigured player-bot constructor crashed the editor. Those experiments do
+not establish a reusable creation API or gameplay feasibility. The consuming
+mod's Stage 1 remains incomplete; MCP scene/edit tests do not pass that gate.

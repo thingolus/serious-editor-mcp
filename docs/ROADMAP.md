@@ -96,3 +96,14 @@ inspection is built in; 7-Zip remains useful for manual comparisons. A second
 machine and human tester are needed for the mod's multiplayer proof, not for MCP
 unit tests. Native plugins, process injection and a full UI-automation framework
 are not requirements for the current bridge.
+
+### v0.4 shared progress (2026-10-24)
+
+Scene inventory and snapshot-based selection now pass live on the consumer's
+nine-entity feasibility fixture. Existing edit/undo operations pass there too.
+Authoring produced a floor, chapter, spawn and experimental enemy through the
+editor. Entity creation/resource binding remain manual experiments: some puppet
+classes are marked obsolete and a bare player-bot constructor crashed. Do not
+expose a general creation tool from presence-only API checks. The next authoring
+work is supported puppet/template construction and a guarded resource-binding
+operation with verified read-back and restoration.

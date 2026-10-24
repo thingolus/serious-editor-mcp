@@ -8,7 +8,7 @@ Connect an MCP client to local package inspection, editor diagnostics and a smal
 Lua bridge running inside the editor. This is an independent community tool.
 You supply your own installed game and editor; no game assets are included.
 
-**v0.3 supports guarded property editing and undo.** You can preview, apply and
+**v0.4 adds scene inventory and verified entity selection.** You can preview, apply and
 undo entity-name, locator-Sphere and Script auto-run changes on a captured selection. These flows
 have passed real-editor tests. Undo restores that edit's previous property value;
 it does not invoke the editor's global undo command. World creation, saving,
@@ -73,6 +73,8 @@ editor. Stdio is the only transport; the server opens no network listener.
 | `editor_has_member` | Checks an exact property path in the current editor context. |
 | `editor_read_member` | Reads an existing property; complex values are descriptive strings. |
 | `editor_selection` | Captures exactly one selected entity and its document identity. |
+| `editor_scene` | Lists up to 200 unique entities with IDs, names, classes and positions; restores the prior selection. |
+| `editor_select_entity` | Selects an entity from a recent scene snapshot after checking document and entity identity. |
 | `editor_preview_edit` | Checks the target and expected old value; returns an edit token without changing the world. |
 | `editor_apply_edit` | Applies the previewed change and verifies read-back; mutation opt-in required. |
 | `editor_undo_edit` | Restores that edit's old value if its target and current value still match. |
@@ -88,6 +90,14 @@ it returns an error. With no scene open, the engine can also log
 "Unable to get current scene interpreter." A ping still works on the start page.
 
 ## Editing and undo
+
+Outside simulation, call `editor_scene` to obtain a `sceneId` and the observed
+`entityId`. Pass both to `editor_select_entity`, then capture `editor_selection`
+before previewing an edit. Scene snapshots retain the most recent eight contexts
+and expire when the bridge restarts. Removed/replaced entities and changed
+documents are rejected. Selection changes do not require the property-mutation
+opt-in. Scene reads temporarily enumerate selection; they restore it even on an
+enumeration error and report restoration failures explicitly.
 
 Set `SERIOUS_EDITOR_ALLOW_MUTATION=1` in your MCP server environment to enable
 apply/undo. Preview and inspection remain available without it. Select one entity

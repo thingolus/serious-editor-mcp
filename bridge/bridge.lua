@@ -43,6 +43,30 @@ end
 -- No native Undo command is used: it can undo an unrelated editor operation.
 local contexts, edits = {}, {}
 local contextOrder, editCount = {}, 0
+local scenes, sceneOrder = {}, {}
+local function enumerateScene()
+  local previous, entities, seen = {}, {}, {}
+  for i=0,edtCountSelectedEntityProperties()-1 do previous[#previous+1]=edtGetSelectedEntityProperty(i) end
+  local ok, problem = pcall(function()
+    edtClearEntityPropertySelection()
+    edtSelectAllEntityProperties()
+    for i=0,edtCountSelectedEntityProperties()-1 do
+      local entity=edtGetSelectedEntityProperty(i)
+      local id=entity:GetEntityID()
+      if not seen[id] then
+        if #entities >= 200 then error("Scene exceeds 200 entities; use a smaller fixture") end
+        seen[id]=true; entities[#entities+1]=entity
+      end
+    end
+  end)
+  local restored, restoreProblem=pcall(function()
+    edtClearEntityPropertySelection()
+    for _,entity in ipairs(previous) do edtSelectEntityProperty(entity) end
+  end)
+  if not restored then error("Selection restoration failed; inspect the editor: "..tostring(restoreProblem)) end
+  if not ok then error(problem) end
+  return entities
+end
 local function selection()
   if edtCountSelectedEntityProperties() ~= 1 then error("Select exactly one entity") end
   local doc = guiGetActiveDocument()
@@ -107,7 +131,7 @@ local function dispatch(operation, encoded, id)
   local argument = unhex(encoded)
   if argument:find("%z") then error("Invalid property path") end
   if operation == "ping" then
-    return '{"bridgeVersion":"0.3.0","luaVersion":' .. quote(_VERSION) ..
+    return '{"bridgeVersion":"0.4.0","luaVersion":' .. quote(_VERSION) ..
       ',"readOnly":false,"undoMode":"conditional-property-restore","getMember":' .. tostring(type(edtGetMemberValue) == "function") ..
       ',"hasMember":' .. tostring(type(edtHasMemberValue) == "function") .. '}'
   elseif operation == "selection" then
@@ -117,6 +141,37 @@ local function dispatch(operation, encoded, id)
     if #contextOrder > 32 then contexts[contextOrder[1]] = nil; table.remove(contextOrder, 1) end
     return '{"contextId":' .. quote(id) .. ',"entityId":' .. scalar(target.entityId) ..
       ',"name":' .. quote(target.name) .. ',"documentPath":null,"documentIdentity":"retained editor handle"}'
+  elseif operation == "scene" then
+    local doc=guiGetActiveDocument()
+    if type(doc)~="table" or not doc._CT_OBJECT_USERDATA_ then error("Open a world document") end
+    local snapshot={document=doc,entities={}}
+    local rows={}
+    for _,entity in ipairs(enumerateScene()) do
+      local entityId=entity:GetEntityID()
+      local q=entity:GetPlacement()
+      snapshot.entities[entityId]=entity
+      rows[#rows+1]='{"entityId":'..scalar(entityId)..',"name":'..quote(entity:GetName())..
+        ',"className":'..quote(entity:GetEntityClassName())..',"position":{"x":'..scalar(q.vx)..',"y":'..scalar(q.vy)..',"z":'..scalar(q.vz)..'}}'
+    end
+    local result='{"sceneId":'..quote(id)..',"entities":['..table.concat(rows,",")..'],"selectionRestored":true}'
+    if #result>48000 then error("Scene response exceeds size limit") end
+    scenes[id]=snapshot; sceneOrder[#sceneOrder+1]=id
+    if #sceneOrder>8 then scenes[sceneOrder[1]]=nil;table.remove(sceneOrder,1) end
+    return result
+  elseif operation == "select_entity" then
+    local sceneId,entityId=argument:match('^([a-f0-9%-]+)\n(%d+)$')
+    local snapshot=scenes[sceneId]
+    local entity=snapshot and snapshot.entities[tonumber(entityId)]
+    if not entity then error("Unknown scene or entity; call editor_scene again") end
+    local doc=guiGetActiveDocument()
+    if type(doc)~="table" or doc._CT_OBJECT_USERDATA_~=snapshot.document._CT_OBJECT_USERDATA_ then error("Editor document changed") end
+    local present=false
+    for _,current in ipairs(enumerateScene()) do
+      if current:GetEntityID()==tonumber(entityId) and current._CT_OBJECT_USERDATA_==entity._CT_OBJECT_USERDATA_ then present=true end
+    end
+    if not present then error("Entity was removed or replaced; call editor_scene again") end
+    edtClearEntityPropertySelection();edtSelectEntityProperty(entity)
+    return '{"selected":true,"entityId":'..entityId..'}'
   elseif operation == "preview_edit" then
     local contextId, path, oldKind, oldHex, newKind, newHex = argument:match('^([a-f0-9%-]+)\n([a-zA-Z_]+)\n([sb])\n([a-f0-9]*)\n([sb])\n([a-f0-9]*)$')
     if not contextId or not contexts[contextId] then error("Unknown/expired context; inspect selection again") end
@@ -153,7 +208,7 @@ end
 -- Ignore the pre-existing request on startup. A restart must never replay a mutation.
 local _, initial = pcall(strLoadText_unsigned, base .. "request.txt")
 local lastId = type(initial) == "string" and initial:gsub("\r\n", "\n"):match("^SE_MCP/1\n([a-f0-9%-]+)\n") or nil
-print("[EditorMCP] bridge 0.3.0 started; conditional edit/undo; stop with globals.EditorMcpBridgeState.running=false")
+print("[EditorMCP] bridge 0.4.0 started; conditional edit/undo; stop with globals.EditorMcpBridgeState.running=false")
 while state.running do
   local loaded, request = pcall(strLoadText_unsigned, base .. "request.txt")
   if loaded and type(request) == "string" and #request <= 16384 then
