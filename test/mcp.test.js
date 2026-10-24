@@ -8,7 +8,8 @@ import { fixture, zipFixture } from './support.js';
 for (const mode of ['legacy', 'auto']) {
   test(`real stdio MCP session (${mode}) lists tools, validates input and enforces installation opt-in`, async t => {
     const root = await fixture(t);
-    await zipFixture(root, { 'Content/Fixture.lua': '-- synthetic test data' });
+    await zipFixture(root, { 'Content/Fixture.lua': '-- synthetic test data',
+      'Help/Macros/Fixture.xml': '<CLASS><NAME>CTest</NAME><FUNCTION><NAME>Inspect</NAME><RETURN>void</RETURN></FUNCTION></CLASS>' });
     const client = new Client({ name: 'integration-test', version: '1.0.0' }, { versionNegotiation: { mode } });
     const transport = new StdioClientTransport({
       command: process.execPath, args: [fileURLToPath(new URL('../src/index.js', import.meta.url))],
@@ -17,7 +18,7 @@ for (const mode of ['legacy', 'auto']) {
     t.after(() => client.close());
     await client.connect(transport);
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 16);
+    assert.equal(listed.tools.length, 17);
     assert.equal(listed.tools.some(tool => /execute|set_member/.test(tool.name)), false);
     const result = await client.callTool({ name: 'editor_status', arguments: {} });
     assert.equal(result.structuredContent.editorInstalled, true);
@@ -39,5 +40,14 @@ for (const mode of ['legacy', 'auto']) {
     assert.equal(entries.structuredContent.entries[0].path, 'Content/Fixture.lua');
     const invalid = await client.callTool({ name: 'editor_list_entries', arguments: { package: 'test.gro', limit: 201 } });
     assert.equal(invalid.isError, true);
+    const help = await client.callTool({ name: 'editor_search_help', arguments: {
+      package: 'test.gro', path: 'Help/Macros/Fixture.xml', query: 'Inspect', className: 'CTest'
+    } });
+    assert.equal(help.structuredContent.results[0].className, 'CTest');
+    assert.equal(help.structuredContent.documentedOnly, true);
+    const badHelp = await client.callTool({ name: 'editor_search_help', arguments: {
+      package: 'test.gro', path: 'Content/Fixture.lua', query: 'Inspect'
+    } });
+    assert.equal(badHelp.isError, true);
   });
 }

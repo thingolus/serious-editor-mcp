@@ -107,3 +107,9 @@ classes are marked obsolete and a bare player-bot constructor crashed. Do not
 expose a general creation tool from presence-only API checks. The next authoring
 work is supported puppet/template construction and a guarded resource-binding
 operation with verified read-back and restoration.
+
+v0.4.1 adds bounded installed-help search to support that work. It identified the
+shared bot-type member needed for a valid expendable NPC configuration. The
+consumer authored that configuration through the editor; resource creation and
+binding are still outside MCP. Search preserves owning classes and marks results
+as documentation only. No game documentation or assets are bundled here.

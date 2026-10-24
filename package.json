@@ -1,6 +1,6 @@
 {
   "name": "serious-editor-mcp",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Independent MCP tools for Serious Editor, created by Thingolus.",
   "type": "module",
   "license": "MIT",
@@ -22,6 +22,7 @@
     "test:live": "node scripts/live-smoke.js",
     "test:live-edits": "node scripts/live-edits.js",
     "test:live-scene": "node scripts/live-scene.js",
+    "test:installed-help": "node scripts/live-help.js",
     "check": "node --check src/index.js"
   },
   "files": [

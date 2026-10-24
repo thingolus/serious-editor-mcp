@@ -8,7 +8,7 @@ Connect an MCP client to local package inspection, editor diagnostics and a smal
 Lua bridge running inside the editor. This is an independent community tool.
 You supply your own installed game and editor; no game assets are included.
 
-**v0.4 adds scene inventory and verified entity selection.** You can preview, apply and
+**v0.4.1 adds installed engine-help search; v0.4 added scene inventory and verified entity selection.** You can preview, apply and
 undo entity-name, locator-Sphere and Script auto-run changes on a captured selection. These flows
 have passed real-editor tests. Undo restores that edit's previous property value;
 it does not invoke the editor's global undo command. World creation, saving,
@@ -82,7 +82,17 @@ editor. Stdio is the only transport; the server opens no network listener.
 | `editor_list_packages` | Lists installed `.gro` files in `Content/SeriousSam2017/`. |
 | `editor_list_entries` | Filters and paginates one package's entries without extraction. |
 | `editor_read_entry` | Reads one Lua/text/JSON/config entry, limited to 256 KiB. |
+| `editor_search_help` | Searches names in packaged Help XML, returning bounded signatures/member descriptions with their owning class. |
 | `editor_read_log` | Returns the last 32 KiB of an allowlisted editor log. |
+
+For installed API documentation, use `editor_search_help` with package
+`00_All.gro`, path `Help/Macros/GameTemplate/Project_macros.xml`, query
+`SpawnExpendableNPC` and className `CPlayerBotManagerEntity`. Discover other help
+paths with `editor_list_entries`. Search is a literal, case-insensitive name match;
+the optional class filter is exact and does not traverse inheritance. Results
+are limited to 20 records and 24 KiB, with `truncated` indicating omitted matches.
+This reads installed documentation without starting the editor. A documented
+signature is not proof that an API works in a particular runtime context.
 
 Use property paths observed in the editor. Do not invent entity IDs or infer
 scene state from an old selection. A missing property returns false; a read of

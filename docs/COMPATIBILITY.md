@@ -1,5 +1,21 @@
 # Compatibility evidence
 
+## v0.4.1: installed help search (2026-10-24)
+
+Seventeen offline tests pass, including stdio help search in legacy/auto modes,
+class ownership, malformed C++ template text, output limits and denied paths.
+`SERIOUS_EDITOR_ROOT` plus `node scripts/live-help.js` verified the installed
+`00_All.gro` documentation for `CCommonPlayerBotParams.pbp_pbtPlayerBotType`,
+`CPlayerBotManagerEntity.SpawnExpendableNPC` and
+`CPlayerActorPuppetEntity.GetCommandValue`. This is a documentation check, not a
+live invocation of those gameplay APIs. Bridge code remains v0.4.0.
+
+The consuming fixture also exposed a real guarded-edit failure: the bot manager
+kept its automatic name `BotManager` after an attempted rename. Read-back caught
+the mismatch and reported an uncertain edit rather than success; a fresh read
+confirmed the original name. Name mutation support must be verified per entity
+class. Locator and Script evidence below does not imply every class accepts it.
+
 Observed on 2026-10-23, Windows, Node.js 24.19.0, pnpm 11.25.0:
 
 | Component | Observed result |
