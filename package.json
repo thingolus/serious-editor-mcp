@@ -1,6 +1,6 @@
 {
   "name": "serious-editor-mcp",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Independent MCP tools for Serious Editor, created by Thingolus.",
   "type": "module",
   "license": "MIT",

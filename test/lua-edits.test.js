@@ -108,6 +108,39 @@ test('actual Lua bridge previews, applies once, reports and conditionally undoes
   assert.deepEqual(result.mock, { name: 'Locator001', sphere: 0, sets: 2 });
 });
 
+test('selection member batches retain nested paths, missing paths and unsupported nil distinctly',()=>{
+  const nested='holder/params/[0]/character';
+  const r=run([
+    {op:'selection'},
+    {op:'read_selection_members',arg:`${id(1)}\nep_strName\n${nested}\nholder\nabsent`}
+  ],'',`
+    local oldHas,oldGet=edtHasMemberValue,edtGetMemberValue
+    function edtHasMemberValue(p) if p=='${nested}' or p=='holder' then return 1 end return oldHas(p) end
+    function edtGetMemberValue(p) if p=='${nested}' then return 'FixtureBot' elseif p=='holder' then return nil end return oldGet(p) end
+  `);
+  const m=r.responses[1].members;
+  assert.equal(m[0].member.value,'Locator001');
+  assert.equal(m[1].member.value,'FixtureBot');
+  assert.equal(m[2].exists,true);assert.equal(m[2].member.valueType,'nil');assert.equal(m[2].member.value,null);
+  assert.equal(m[3].exists,false);
+  assert.equal(r.mock.sets,0);
+});
+
+test('member batches reject unknown, stale, changed-during-read and malformed contexts without writes',()=>{
+  const invalid=[`${id(99)}\nep_strName`,`${id(1)}\nep_strName\nep_strName`,
+    `${id(1)}\nep_strName\n`,`${id(1)}\nx;print()`,`${id(1)}\n${'x'.repeat(193)}`,
+    `${id(1)}\n${Array.from({length:17},(_,i)=>`p${i}`).join('\n')}`];
+  const r=run([{op:'selection'},...invalid.map(arg=>({op:'read_selection_members',arg})),
+    {op:'read_selection_members',arg:`${id(1)}\nep_strName`,before:'mock.document={_CT_OBJECT_USERDATA_={}}'}]);
+  assert.ok(r.responses.slice(1).every(x=>x.status==='error'));
+  assert.equal(r.mock.sets,0);
+  const changed=run([{op:'selection'},{op:'read_selection_members',arg:`${id(1)}\nep_strName`}],'',`
+    function edtGetMemberValue(p) mock.document={_CT_OBJECT_USERDATA_={}};return 'wrong document' end
+  `);
+  assert.equal(changed.responses[1].status,'error');
+  assert.equal(changed.responses[1].members,undefined);
+});
+
 test('simulation lifecycle is bound to its document, restores player setting, and rejects duplicates/reload',()=>{
   const r=run([
     {op:'open_document',arg:'Content/Fixture/Test.wld'},
@@ -188,7 +221,7 @@ test('reload requires expiry acknowledgement, uses a fixed path and acknowledges
   const started=run([{op:'ping'}],'',`globals.EditorMcpBridgeState={running=false,reloadId='${id(99)}'}`);
   assert.equal(started.responses[0].reloaded,true);
   assert.equal(started.responses[0].tokensExpired,true);
-  assert.equal(started.responses[1].bridgeVersion,'0.6.0');
+  assert.equal(started.responses[1].bridgeVersion,'0.7.0');
 });
 
 test('scene snapshots restore selection and reject stale documents and removed entities', () => {

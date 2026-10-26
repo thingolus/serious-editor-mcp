@@ -19,6 +19,9 @@ This proves connectivity, not full property access or world automation.
 Verified: saved/reopened original locator, string and numeric member reads, single
 selection identity and no-selection rejection. Filename discovery and positive
 engine-reference serialization remain open. See COMPATIBILITY.md for exact scope.
+v0.7 adds a bounded read batch tied to the captured document/entity selection.
+Nested resource/array leaf paths pass live; full array enumeration, resource
+assignment and generic resource-panel context still need separate verification.
 
 1. Create an original disposable world using the editor UI and save it under the
    consuming mod's namespace. Record its editor/build version.

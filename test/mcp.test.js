@@ -18,7 +18,7 @@ for (const mode of ['legacy', 'auto']) {
     t.after(() => client.close());
     await client.connect(transport);
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 24);
+    assert.equal(listed.tools.length, 25);
     assert.equal(listed.tools.some(tool => /execute|set_member/.test(tool.name)), false);
     const result = await client.callTool({ name: 'editor_status', arguments: {} });
     assert.equal(result.structuredContent.editorInstalled, true);

@@ -33,7 +33,7 @@ export async function status(config) {
 }
 
 export function createServer(config = configuration()) {
-  const server = new McpServer({ name: 'serious-editor-mcp', version: '0.6.0' });
+  const server = new McpServer({ name: 'serious-editor-mcp', version: '0.7.0' });
   const documents = documentTools(config);
   function tool(name, description, schema, handler, readOnly = true) {
     server.registerTool(name, {
@@ -90,6 +90,11 @@ export function createServer(config = configuration()) {
     async input => requestEditor(await requireRoot(config), 'get_member', input.path));
   tool('editor_selection', 'Capture exactly one selected entity and retain its document/entity identity. Returns a session context token; document filename discovery is not supported.', {},
     async () => requestEditor(await requireRoot(config), 'selection'));
+  tool('editor_read_selection_members', 'Read up to 16 distinct property paths after checking a captured document/entity selection, and recheck it before returning. Nested paths use / between members and /[0] for the first array element. Missing paths are reported individually. Complex nil values mean unavailable or null, not an empty array. Does not edit, expand UI panels or save.', {
+    contextId: z.uuid(),
+    paths: z.array(z.string().min(1).max(192).regex(/^[A-Za-z_][A-Za-z0-9_/\[\].-]*$/)).min(1).max(16)
+      .refine(paths => new Set(paths).size === paths.length, 'Paths must be distinct')
+  }, async input => requestEditor(await requireRoot(config), 'read_selection_members', `${input.contextId}\n${input.paths.join('\n')}`));
   tool('editor_scene', 'Snapshot up to 200 unique entities in the current world, including names, classes and positions. Temporarily enumerates selection and restores it. Does not save or change entity properties.', {},
     async () => requestEditor(await requireRoot(config), 'scene'));
   tool('editor_select_entity', 'Select an entity from a recent editor_scene snapshot after checking the retained document and entity identity. Changes editor selection only; then use editor_selection to capture an edit context.', {

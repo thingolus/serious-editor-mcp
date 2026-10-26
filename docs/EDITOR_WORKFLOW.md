@@ -1,6 +1,6 @@
 # Editor workflow and recovery
 
-This guide describes v0.5.0 on Serious Editor 2017 build 3897336. See
+This guide describes v0.7.0 on Serious Editor 2017 build 3897336. See
 [compatibility evidence](COMPATIBILITY.md) for what was actually exercised.
 
 ## Start once, iterate through MCP
@@ -8,7 +8,7 @@ This guide describes v0.5.0 on Serious Editor 2017 build 3897336. See
 1. Configure `SERIOUS_EDITOR_ROOT` and run `node src/index.js --install-bridge`.
 2. Start the editor. Use **Script > Run script from file** once to run
    `Content/EditorMcp/bridge.lua`.
-3. Call `editor_ping`; require `bridgeVersion: "0.5.0"`.
+3. Call `editor_ping`; require `bridgeVersion: "0.7.0"`.
 4. Use `editor_open_document`, `editor_scene`, `editor_select_entity`, property
    inspection and checked edits. Avoid repeating file-dialog navigation.
 5. Enable project saves only by setting `SERIOUS_EDITOR_ALLOW_MUTATION=1` and
@@ -41,6 +41,44 @@ The result contains `documentId`, `requestedPath`, `sha256`, `bytes`, and
 `documentPath: null`. The path is the explicit Open argument, not an inferred
 filename. The bridge retains both the concrete document returned by Open and
 the active editor interface. These handles are different in this engine.
+
+### Inspect nested entity properties without expanding panels
+
+Select a world entity through `editor_scene` and `editor_select_entity`, then
+capture `editor_selection`. Pass that `contextId` and 1–16 distinct `paths` to
+`editor_read_selection_members`. Each path is limited to 192 ASCII characters;
+letters, digits, underscores, slashes, brackets, dots and hyphens are accepted.
+The tool checks the active document, entity handle, ID and single selection
+before reading and again before returning. It performs no writes or panel changes.
+
+Native meta paths use `/` between members and `/[0]` for the first array element.
+Dots do not traverse members. These paths were verified on a configured bot manager:
+
+```text
+ep_pbphExpendableNPCs/pbph_apbpPlayerBotParams/[0]/pbp_idCharacterName
+ep_pbphExpendableNPCs/pbph_apbpPlayerBotParams/[0]/pbp_pcpbpCommonBotParams/pbp_pbtPlayerBotType
+```
+
+The response has one `members` row per requested path. `exists: false` means the
+path was not found. An existing path has `exists: true` and a `member` with
+`valueType`, `value` and `resourcePath`. An existing holder/array may return
+`valueType: "nil", value: null`; this means unavailable or null, **not** an empty
+array. Request observed leaf paths instead. This tool does not enumerate members
+or serialize whole resources. Resource filenames are returned only when the
+native getter works.
+
+On a stale-context error, inspect and select the intended entity again before
+capturing a new context. Do not substitute an invented entity ID. Opening a
+generic parameter document does not guarantee its property panel becomes the
+current member-query context; these checks were verified on selected world entities.
+Any native read error or oversized result fails the batch without partial data.
+
+Run `node scripts/live-members.js <world-path> <entity-name> [nested-path ...]`
+with `SERIOUS_EDITOR_ROOT` set. It compares batch/single reads, verifies a missing
+path, rejects a changed selection, reselects the target, and checks the disk hash.
+The test needs a second entity and leaves the requested target selected.
+
+### Save the inspected document
 
 After inspecting and editing, call `editor_document` with that token. Pass its
 hash to `editor_save_document`:

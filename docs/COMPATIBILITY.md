@@ -1,5 +1,28 @@
 # Compatibility evidence
 
+## v0.7.0: selection-bound nested inspection (2026-10-26)
+
+Thirty offline tests, Lua 5.1 syntax checking and the 25-tool public stdio smoke
+test pass on the same installation as v0.6. `scripts/live-members.js` passed on
+a disposable copy of the consumer's original Stage 1 world. It read the manager
+name and both nested character-ID/bot-type paths through the public MCP tool,
+matched individual reads, reported a missing path, rejected a different selected
+entity, succeeded after reselecting the target and left the file hash unchanged.
+
+The actual native paths use `/` and `/[0]`; the earlier dotted-path experiment
+was invalid. This establishes nested leaf reads, not whole-holder serialization
+or resource assignment. Fake-engine tests also reject invalid/duplicate/oversized
+path sets and context changes during a read, with no writes or partial results.
+
+The consumer's `dofile`-loaded gameplay probe picked up edits on subsequent
+simulations without restarting the editor. Its directly bound entry resource had
+previously stayed cached. No general resource/script-refresh operation is exposed.
+
+Further consumer tests now spawn its bot in a fresh dedicated process using an
+alternate saved manager-list configuration. Damage, navigation and multiplayer
+gameplay remain open; this is not a passing mod milestone. Experimental resource
+assignment/reinitialization commands are not included in this release.
+
 ## v0.6.0: nonexclusive simulation lifecycle (2026-10-26)
 
 Same Windows/Fusion/editor builds as v0.5. Twenty-eight offline tests and the

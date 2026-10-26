@@ -8,7 +8,12 @@ Connect an MCP client to local package inspection, editor diagnostics and a smal
 Lua bridge running inside the editor. This is an independent community tool.
 You supply your own installed game and editor; no game assets are included.
 
-**v0.6 adds guarded simulation start, inspection and stop.** Nonexclusive tests
+**v0.7 adds selection-bound batch property inspection**, including verified nested
+resource and array paths. Capture an entity once, read up to 16 paths, and reject
+changed selection/document context. Missing properties remain distinct from
+existing properties whose complex value cannot be represented.
+
+The v0.6 simulation tools provide guarded start, inspection and stop. Nonexclusive tests
 can create a player while keeping the bridge responsive; stop restores the prior
 player-creation preference. Three consecutive cycles pass in the installed editor.
 See [the editor workflow](docs/EDITOR_WORKFLOW.md) for configuration and recovery.
@@ -88,6 +93,7 @@ editor. Stdio is the only transport; the server opens no network listener.
 | `editor_has_member` | Checks an exact property path in the current editor context. |
 | `editor_read_member` | Reads an existing property; complex values retain descriptive strings. Resource userdata also returns `resourcePath` when its filename getter works. |
 | `editor_selection` | Captures exactly one selected entity and its document identity. |
+| `editor_read_selection_members` | Reads up to 16 exact paths against a captured selection, checking its document/entity before and after the read. Reports missing paths individually. |
 | `editor_scene` | Lists up to 200 unique entities with IDs, names, classes and positions; restores the prior selection. |
 | `editor_select_entity` | Selects an entity from a recent scene snapshot after checking document and entity identity. |
 | `editor_preview_edit` | Checks the target and expected old value; returns an edit token without changing the world. |
@@ -199,6 +205,12 @@ For Script bindings, select the entity and read `ep_pssScriptSource`;
 `resourcePath` identifies the bound Lua file when supported. This is read-only:
 resource reassignment and nested holder/array serialization are not implemented.
 
+Nested **leaf reads** are supported: separate members with `/`, and use `/[0]`
+for the first array element. For example, the installed bot manager's character ID
+is `ep_pbphExpendableNPCs/pbph_apbpPlayerBotParams/[0]/pbp_idCharacterName`.
+Call `editor_selection`, then pass its `contextId` and a `paths` array to
+`editor_read_selection_members`. See the workflow guide for limits and recovery.
+
 See [the editor workflow and recovery guide](docs/EDITOR_WORKFLOW.md) for examples,
 timeouts, backups, update/reload steps and the exact UI operations still required.
 
@@ -244,6 +256,8 @@ node scripts/live-script.js RC_Smoke
 # Disposable saved world only; restores the locator name and saves both versions:
 $env:SERIOUS_EDITOR_PROJECT_ROOT = 'Content/YourMod'
 node scripts/live-documents.js Content/YourMod/Levels/Test.wld 1 LocatorName
+# Read/selection check; pass optional observed nested paths after the entity name:
+node scripts/live-members.js Content/YourMod/Levels/Test.wld LocatorName ep_bSphere
 ```
 
 Offline tests use disposable fake installations, original ZIP fixtures and the
