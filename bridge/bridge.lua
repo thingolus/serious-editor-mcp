@@ -55,14 +55,22 @@ local function simulationResult()
   if not simulation then return '{"simulationId":null,"status":"none","running":null}' end
   return '{"simulationId":'..quote(simulation.id)..',"status":'..quote(simulation.status)..
     ',"requestedPath":'..quote(simulation.path)..',"activeDocument":'..tostring(simulationActive())..
-    ',"withPlayer":'..tostring(simulation.withPlayer)..',"playerSettingRestored":'..scalar(simulation.restored)..',"running":null}'
+    ',"withPlayer":'..tostring(simulation.withPlayer)..',"playerSettingRestored":'..scalar(simulation.restored)..
+    ',"runInBackground":'..tostring(simulation.runInBackground)..',"previousAutoPause":'..scalar(simulation.previousAutoPause)..
+    ',"backgroundSettingRestored":'..scalar(simulation.backgroundRestored)..',"running":null}'
 end
-local function restorePlayerSetting()
+local function restoreSimulationSettings()
   -- Preserve a user change made while the simulation was running.
   if prj_bAutoCreatePlayerInEditor==simulation.withPlayer then
     prj_bAutoCreatePlayerInEditor=simulation.previousPlayer
     simulation.restored=prj_bAutoCreatePlayerInEditor==simulation.previousPlayer
   else simulation.restored=false end
+  if simulation.runInBackground then
+    if sim_bAutoPause==0 then
+      sim_bAutoPause=simulation.previousAutoPause
+      simulation.backgroundRestored=sim_bAutoPause==simulation.previousAutoPause
+    else simulation.backgroundRestored=false end
+  end
 end
 local function currentDocument()
   local doc = guiGetActiveDocument()
@@ -180,7 +188,7 @@ local function dispatch(operation, encoded, id)
   local argument = unhex(encoded)
   if argument:find("%z") then error("Invalid property path") end
   if operation == "ping" then
-    return '{"bridgeVersion":"0.7.0","luaVersion":' .. quote(_VERSION) ..
+    return '{"bridgeVersion":"0.8.0","luaVersion":' .. quote(_VERSION) ..
       ',"readOnly":false,"undoMode":"conditional-property-restore","getMember":' .. tostring(type(edtGetMemberValue) == "function") ..
       ',"hasMember":' .. tostring(type(edtHasMemberValue) == "function") .. '}'
   elseif operation == "document" then
@@ -202,16 +210,23 @@ local function dispatch(operation, encoded, id)
     edtExecuteCommand("Command.CloseDocument")
     if simulationActive() then error("Simulation close did not change the active document; inspect editor") end
     simulation.status="stopped"
-    restorePlayerSetting()
+    restoreSimulationSettings()
     return simulationResult()
   elseif operation == "start_simulation" then
-    local documentId,player=argument:match('^([a-f0-9%-]+)\n([01])$')
-    if not documentId then error("Expected document token and player option") end
+    local documentId,player,background=argument:match('^([a-f0-9%-]+)\n([01])\n([01])$')
+    -- Preserve the old two-line protocol for existing clients.
+    if not documentId then documentId,player=argument:match('^([a-f0-9%-]+)\n([01])$');background="0" end
+    if not documentId then error("Expected document token, player option and optional background option") end
     if simulation and simulation.status~="stopped" and simulation.status~="failed" then error("A tracked simulation already exists; inspect/stop it first") end
     local record = checkedDocument(documentId)
     if not record.path:match("%.wld$") then error("Simulation requires an opened world") end
     if type(prj_bAutoCreatePlayerInEditor)~="boolean" then error("Required player-creation setting unavailable") end
-    simulation={id=id,path=record.path,status="start-requested",withPlayer=player=="1",previousPlayer=prj_bAutoCreatePlayerInEditor}
+    if background=="1" and sim_bAutoPause~=0 and sim_bAutoPause~=1 then error("Required numeric auto-pause setting unavailable") end
+    simulation={id=id,path=record.path,status="start-requested",withPlayer=player=="1",previousPlayer=prj_bAutoCreatePlayerInEditor,runInBackground=background=="1"}
+    if simulation.runInBackground then
+      simulation.previousAutoPause=sim_bAutoPause
+      sim_bAutoPause=0
+    end
     prj_bAutoCreatePlayerInEditor=simulation.withPlayer
     local ok,problem=pcall(edtExecuteCommand,"Command.StartDefaultSimNonExclusive")
     local active=guiGetActiveDocument()
@@ -219,7 +234,7 @@ local function dispatch(operation, encoded, id)
       simulation.document=active
       simulation.status=ok and "document-created" or "uncertain"
     else
-      simulation.status="failed";restorePlayerSetting()
+      simulation.status="failed";restoreSimulationSettings()
       error("Simulation did not create an active document; inspect editor log: "..tostring(problem))
     end
     if not ok then error("Simulation start uncertain; inspect editor_simulation: "..tostring(problem)) end
@@ -331,10 +346,10 @@ end
 -- Ignore the pre-existing request on startup. A restart must never replay a mutation.
 local _, initial = pcall(strLoadText_unsigned, base .. "request.txt")
 local lastId = type(initial) == "string" and initial:gsub("\r\n", "\n"):match("^SE_MCP/1\n([a-f0-9%-]+)\n") or nil
-print("[EditorMCP] bridge 0.7.0 started; conditional edit/undo; stop with globals.EditorMcpBridgeState.running=false")
+print("[EditorMCP] bridge 0.8.0 started; conditional edit/undo; stop with globals.EditorMcpBridgeState.running=false")
 -- Acknowledge only from the new listener: no request can fall into the reload gap.
 local pendingResponse, responseAttempts = nil, 0
-if reloadId then pendingResponse="SE_MCP/1\n"..reloadId.."\nok\n{\"reloaded\":true,\"tokensExpired\":true,\"bridgeVersion\":\"0.7.0\"}\n" end
+if reloadId then pendingResponse="SE_MCP/1\n"..reloadId.."\nok\n{\"reloaded\":true,\"tokensExpired\":true,\"bridgeVersion\":\"0.8.0\"}\n" end
 local function flushResponse()
   if not pendingResponse then return end
   responseAttempts=responseAttempts+1

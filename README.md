@@ -8,7 +8,13 @@ Connect an MCP client to local package inspection, editor diagnostics and a smal
 Lua bridge running inside the editor. This is an independent community tool.
 You supply your own installed game and editor; no game assets are included.
 
-**v0.7 adds selection-bound batch property inspection**, including verified nested
+**v0.8 adds opt-in background simulation.** Set `runInBackground: true` to keep
+the nonexclusive simulation ticking when another app has focus. Stop restores the
+previous auto-pause preference if it has not been changed independently. The
+default leaves auto-pause unchanged. See [the workflow](docs/EDITOR_WORKFLOW.md#repeatable-simulation)
+for receipt fields and recovery.
+
+v0.7 added selection-bound batch property inspection, including verified nested
 resource and array paths. Capture an entity once, read up to 16 paths, and reject
 changed selection/document context. Missing properties remain distinct from
 existing properties whose complex value cannot be represented.
@@ -87,9 +93,9 @@ editor. Stdio is the only transport; the server opens no network listener.
 | `editor_open_document` | Opens/activates an existing loose `.wld` or `.ep` under `Content/`; returns a session token and disk hash. |
 | `editor_document` | Checks the retained document is active; returns disk hash and save eligibility. Dirty state remains unknown. |
 | `editor_save_document` | Saves a retained project document after identity/hash checks and a backup. Requires mutation opt-in and `SERIOUS_EDITOR_PROJECT_ROOT`. |
-| `editor_start_simulation` | Starts the default simulation nonexclusively from a retained project world; optional native player creation defaults on. Requires mutation opt-in and project root. Executes that world's scripts. |
+| `editor_start_simulation` | Starts the default simulation nonexclusively from a retained project world. `withPlayer` defaults true; `runInBackground` defaults false. Requires mutation opt-in and project root. Executes that world's scripts. |
 | `editor_simulation` | Reads the latest simulation receipt and whether its document is active. Does not infer gameplay readiness. |
-| `editor_stop_simulation` | Closes only the retained active simulation and conditionally restores the prior player-creation preference. |
+| `editor_stop_simulation` | Closes only the retained active simulation and conditionally restores player creation and opted-in auto-pause preferences. |
 | `editor_has_member` | Checks an exact property path in the current editor context. |
 | `editor_read_member` | Reads an existing property; complex values retain descriptive strings. Resource userdata also returns `resourcePath` when its filename getter works. |
 | `editor_selection` | Captures exactly one selected entity and its document identity. |

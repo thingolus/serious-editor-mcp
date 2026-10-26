@@ -6,7 +6,7 @@ import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotoc
 const [worldPath,entityName,...extraPaths]=process.argv.slice(2);
 if(!worldPath||!entityName||!process.env.SERIOUS_EDITOR_ROOT)throw new Error('Set SERIOUS_EDITOR_ROOT; pass world path, entity name, and optional nested paths.');
 const paths=['ep_strName',...extraPaths,'__EditorMcpMissingMember'];
-const client=new Client({name:'serious-editor-live-members',version:'0.7.0'});
+const client=new Client({name:'serious-editor-live-members',version:'0.8.0'});
 const transport=new StdioClientTransport({command:process.execPath,
   args:[fileURLToPath(new URL('../src/index.js',import.meta.url))],
   env:{...getDefaultEnvironment(),SERIOUS_EDITOR_ROOT:process.env.SERIOUS_EDITOR_ROOT}});

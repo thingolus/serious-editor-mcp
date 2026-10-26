@@ -1,5 +1,28 @@
 # Compatibility evidence
 
+## v0.8.0: background simulation (2026-10-26)
+
+The installed editor exposes `sim_bAutoPause` as numeric `1`, despite its help
+entry describing a Boolean cvar. The new `runInBackground` option validates that
+numeric binding and temporarily sets it to `0`. It is off by default.
+
+Thirty-three offline tests and Lua 5.1 syntax checks pass. The live public stdio
+simulation test passed three background-enabled cycles with new start/stop log
+lines, duplicate-start rejection, both preferences restored, and unchanged world
+bytes. The fake-engine cases cover prior values 0 and 1, an unavailable binding,
+invalid input, opt-out, failed starts, ineffective closes and intervening changes.
+
+The consumer's original damageable-puppet fixture passed a separate timed check:
+with the runtime client in the foreground, the editor logged all ten one-second
+heartbeats while puppet health remained 80 after host-applied damage. Guarded Stop
+then restored auto-pause from 0 to the recorded 1. This proves background game-time
+advancement in this build; it is not proof of multiplayer gameplay.
+
+Recovery and receipt fields are documented in the
+[simulation workflow](EDITOR_WORKFLOW.md#repeatable-simulation). This release adds
+no automatic startup, arbitrary cvar setter, Lua execution endpoint or new tool.
+The public surface remains 25 tools.
+
 ## v0.7.0: selection-bound nested inspection (2026-10-26)
 
 Thirty offline tests, Lua 5.1 syntax checking and the 25-tool public stdio smoke

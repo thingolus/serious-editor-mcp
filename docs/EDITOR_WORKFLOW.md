@@ -1,6 +1,6 @@
 # Editor workflow and recovery
 
-This guide describes v0.7.0 on Serious Editor 2017 build 3897336. See
+This guide describes v0.8.0 on Serious Editor 2017 build 3897336. See
 [compatibility evidence](COMPATIBILITY.md) for what was actually exercised.
 
 ## Start once, iterate through MCP
@@ -8,7 +8,7 @@ This guide describes v0.7.0 on Serious Editor 2017 build 3897336. See
 1. Configure `SERIOUS_EDITOR_ROOT` and run `node src/index.js --install-bridge`.
 2. Start the editor. Use **Script > Run script from file** once to run
    `Content/EditorMcp/bridge.lua`.
-3. Call `editor_ping`; require `bridgeVersion: "0.7.0"`.
+3. Call `editor_ping`; require `bridgeVersion: "0.8.0"`.
 4. Use `editor_open_document`, `editor_scene`, `editor_select_entity`, property
    inspection and checked edits. Avoid repeating file-dialog navigation.
 5. Enable project saves only by setting `SERIOUS_EDITOR_ALLOW_MUTATION=1` and
@@ -130,7 +130,7 @@ one editor restart even when the world's title reference is correct.
 Open an original project world through `editor_open_document`, then:
 
 ```json
-{"name":"editor_start_simulation","arguments":{"documentId":"<open token>","withPlayer":true}}
+{"name":"editor_start_simulation","arguments":{"documentId":"<open token>","withPlayer":true,"runInBackground":true}}
 {"name":"editor_simulation","arguments":{}}
 {"name":"editor_stop_simulation","arguments":{"simulationId":"<returned token>"}}
 ```
@@ -145,6 +145,18 @@ An intervening preference change is preserved and reported. Source worlds are
 neither saved nor closed. The default configuration can have its own autosave,
 network and script effects; inspect it before running a test.
 
+`runInBackground` defaults to false, which leaves the editor's auto-pause setting
+unchanged. Opt in for unattended tests: it temporarily sets the verified numeric
+`sim_bAutoPause` cvar to `0`. This is an editor-wide preference, so use one tracked
+simulation at a time. The receipt records `previousAutoPause` (`0` or `1`) and
+`backgroundSettingRestored` (null until cleanup, then true if restored or false
+if a different current value was preserved). The player preference has its own
+restoration field. These fields report conditional cleanup, not gameplay success.
+Failed starts without a new document restore both preferences; an uncertain start
+with a new document retains them until guarded Stop. An ineffective Close leaves
+them applied so the running test can still be recovered. Old two-line bridge
+requests keep their previous behavior and do not change auto-pause.
+
 `status: "document-created"` proves a distinct document was returned, not that
 the engine finished loading or a script passed. `running` deliberately stays
 null. Check **new** log lines for the requested world and its gameplay-specific
@@ -155,7 +167,7 @@ are rejected until the simulation is stopped.
 Keep the simulation tab active until Stop. If another tab is selected, Stop
 refuses to close it. Select the simulation tab in the editor and retry. If the
 simulation was closed outside MCP, its retained record is not proof of a live
-simulation; restore any changed player preference deliberately before a manual
+simulation; restore any changed player preference and the recorded auto-pause value deliberately before a manual
 bridge restart. Tokens do not survive that restart.
 
 Exclusive `Command.StartDefaultSim` suspends the calling bridge in the tested
@@ -171,6 +183,10 @@ mutation opt-in and project root set. It exercises three public-stdio cycles,
 checks new start/stop engine log lines, duplicate rejection, preference restoration,
 source-document return and unchanged source bytes. This runs the world's scripts;
 use a disposable original fixture. It does not certify gameplay or multiplayer.
+Add `--background` to verify the opt-in receipt and preference restoration in all
+three cycles. To prove background ticking, also run a fixture with timed gameplay
+log evidence while a different application has focus; start/stop alone cannot
+prove that game time advanced.
 
 ## Failure recovery
 

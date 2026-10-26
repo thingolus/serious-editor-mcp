@@ -7,7 +7,9 @@ import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {Client} from '@modelcontextprotocol/client';
 import {StdioClientTransport,getDefaultEnvironment} from '@modelcontextprotocol/client/stdio';
-const [world]=process.argv.slice(2);
+const [world,...options]=process.argv.slice(2);
+if(options.some(option=>option!=='--background'))throw new Error('Only --background is supported after the world path.');
+const runInBackground=options.includes('--background');
 const root=process.env.SERIOUS_EDITOR_ROOT;
 if(!world||!root||process.env.SERIOUS_EDITOR_ALLOW_MUTATION!=='1'||!process.env.SERIOUS_EDITOR_PROJECT_ROOT)
   throw new Error('Usage: node scripts/live-simulation.js Content/YourMod/Test.wld; set root, project root and mutation opt-in.');
@@ -44,8 +46,9 @@ try{
   for(let i=0;i<3;i++){
     const doc=await call('editor_open_document',{path:world});
     const offset=(await stat(logfile)).size;
-    active=await call('editor_start_simulation',{documentId:doc.documentId,withPlayer:true});
+    active=await call('editor_start_simulation',{documentId:doc.documentId,withPlayer:true,runInBackground});
     assert.equal(active.status,'document-created');assert.equal(active.running,null);
+    assert.equal(active.runInBackground,runInBackground);
     await waitLog(offset,`Started simulation on '${world}'`);
     assert.equal((await call('editor_simulation')).activeDocument,true);
     const duplicate=await client.callTool({name:'editor_start_simulation',arguments:{documentId:doc.documentId}});
@@ -53,13 +56,15 @@ try{
     const stopped=await call('editor_stop_simulation',{simulationId:active.simulationId});
     active=null;
     assert.equal(stopped.status,'stopped');assert.equal(stopped.playerSettingRestored,true);
+    assert.equal(stopped.backgroundSettingRestored,runInBackground?true:null);
     await waitLog(offset,`Stopping world '${world}'`);
     assert.equal((await call('editor_document',{documentId:doc.documentId})).active,true);
     assert.equal((await call('editor_stop_simulation',{simulationId:stopped.simulationId})).status,'stopped');
   }
   assert.deepEqual(await readFile(path.join(root,world)),original);
   console.log(JSON.stringify({passed:true,cycles:3,newStartAndStopLogEvidence:true,sourceFileUnchanged:true,
-    duplicateRejected:true,playerPreferenceRestored:true,limitation:'Lifecycle proof only; inspect world-specific logs to establish player/gameplay behavior.'},null,2));
+    duplicateRejected:true,playerPreferenceRestored:true,runInBackground,backgroundPreferenceRestored:runInBackground?true:null,
+    limitation:'Lifecycle proof only; a world-specific heartbeat with the editor unfocused is required to prove background ticking.'},null,2));
 }finally{
   if(active)await call('editor_stop_simulation',{simulationId:active.simulationId}).catch(error=>console.error('Stop uncertain:',error.message));
   await client.close();

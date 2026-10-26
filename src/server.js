@@ -33,7 +33,7 @@ export async function status(config) {
 }
 
 export function createServer(config = configuration()) {
-  const server = new McpServer({ name: 'serious-editor-mcp', version: '0.7.0' });
+  const server = new McpServer({ name: 'serious-editor-mcp', version: '0.8.0' });
   const documents = documentTools(config);
   function tool(name, description, schema, handler, readOnly = true) {
     server.registerTool(name, {
@@ -68,12 +68,12 @@ export function createServer(config = configuration()) {
     path: z.string().min(1).max(1024)
   }, async input => documents.open(await requireRoot(config), input.path), false);
   const documentId = { documentId: z.uuid().describe('Token from editor_open_document in this MCP session.') };
-  tool('editor_start_simulation', 'Start the default configured simulation nonexclusively from a retained project world. Executes its scripts. Requires mutation opt-in and project root. withPlayer temporarily sets the native auto-create-player option until stop. A created document is not proof of gameplay readiness; inspect new log evidence.', {
-    ...documentId, withPlayer: z.boolean().default(true)
-  }, async input => documents.startSimulation(await requireRoot(config),input.documentId,input.withPlayer),false);
+  tool('editor_start_simulation', 'Start the default configured simulation nonexclusively from a retained project world. Executes its scripts. Requires mutation opt-in and project root. withPlayer temporarily sets auto-create-player; runInBackground temporarily disables focus-loss auto-pause. Stop conditionally restores both settings. A created document is not proof of gameplay readiness; inspect new log evidence.', {
+    ...documentId, withPlayer: z.boolean().default(true), runInBackground: z.boolean().default(false)
+  }, async input => documents.startSimulation(await requireRoot(config),input.documentId,input.withPlayer,input.runInBackground),false);
   tool('editor_simulation', 'Inspect the latest bridge-owned simulation receipt and whether its document is active. Use after a timeout. running remains unknown; verify engine and gameplay logs separately.',{},
     async () => requestEditor(await requireRoot(config),'simulation'));
-  tool('editor_stop_simulation', 'Close only the retained simulation document when it is still active; conditionally restore the prior auto-create-player setting. Does not close/save source worlds. Requires mutation opt-in. Stop before reloading the bridge.', {
+  tool('editor_stop_simulation', 'Close only the retained simulation document when it is still active; conditionally restore the prior auto-create-player and opted-in auto-pause settings. Does not close/save source worlds. Requires mutation opt-in. Stop before reloading the bridge.', {
     simulationId:z.uuid()
   },async input=>{
     if(!config.allowMutation)throw new Error('Editing is disabled. Set SERIOUS_EDITOR_ALLOW_MUTATION=1.');

@@ -130,6 +130,11 @@ replaying a mutation. See EDITOR_WORKFLOW.md for recovery and compatibility limi
 
 ### v0.6 shared progress (2026-10-26)
 
+v0.8 adds opt-in background ticking through the verified numeric `sim_bAutoPause`
+binding, with conditional preference restoration and failed-start recovery. It
+avoids repeated editor focus changes during timed tests. General cvar writes and
+automatic startup remain outside the public interface.
+
 Default nonexclusive simulation start/status/stop now pass three live public-stdio
 cycles, with optional native player creation and conditional preference restoration.
 Restarting after title-file installation resolved the earlier discovery failure.

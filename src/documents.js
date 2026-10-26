@@ -49,15 +49,16 @@ export function documentTools(config, request = requestEditor) {
         note: 'Path is the explicit open request, not an editor filename query. Existing unsaved contents are preserved; inspect before saving.' };
     },
     inspect,
-    async startSimulation(root, id, withPlayer) {
+    async startSimulation(root, id, withPlayer, runInBackground = false) {
       if (!config.allowMutation) throw new Error('Editing is disabled. Set SERIOUS_EDITOR_ALLOW_MUTATION=1.');
       const doc=record(id);
       if (!config.projectRoot || !doc.path.startsWith(`${config.projectRoot}/`) || !doc.path.endsWith('.wld')) {
         throw new Error('Simulation requires an opened world in SERIOUS_EDITOR_PROJECT_ROOT.');
       }
       if (typeof withPlayer!=='boolean') throw new Error('withPlayer must be boolean.');
+      if (typeof runInBackground!=='boolean') throw new Error('runInBackground must be boolean.');
       await inspect(root,id);
-      return request(root,'start_simulation',`${id}\n${withPlayer?'1':'0'}`,15000);
+      return request(root,'start_simulation',`${id}\n${withPlayer?'1':'0'}\n${runInBackground?'1':'0'}`,15000);
     },
     async save(root, id, expectedSha256) {
       if (!config.allowMutation) throw new Error('Editing is disabled. Set SERIOUS_EDITOR_ALLOW_MUTATION=1.');

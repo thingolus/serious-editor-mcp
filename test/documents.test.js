@@ -18,6 +18,7 @@ test('simulation requires mutation opt-in and a retained project world',async t=
   await s.tools.startSimulation(s.root,id,true);
   assert.deepEqual(s.ops,['open_document','document','start_simulation']);
   await assert.rejects(s.tools.startSimulation(s.root,id,'true'));
+  await assert.rejects(s.tools.startSimulation(s.root,id,true,'true'),/runInBackground/);
 });
 async function setup(t, options={}) {
   const root=await fixture(t);
