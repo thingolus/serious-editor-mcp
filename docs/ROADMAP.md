@@ -125,7 +125,15 @@ navigation and bridge-menu reloads are no longer needed after initial startup.
 The transport also handles transient Windows file-sharing failures without
 replaying a mutation. See EDITOR_WORKFLOW.md for recovery and compatibility limits.
 
-Next: nested resource-holder inspection, supported resource reassignment and
-reliable simulation configuration/state/start/stop. The attempted native test
-command failed on missing title configuration; retain UI/CLI workflows until the
-complete lifecycle is proven. Consumer Stage 1 gameplay remains incomplete.
+### v0.6 shared progress (2026-10-26)
+
+Default nonexclusive simulation start/status/stop now pass three live public-stdio
+cycles, with optional native player creation and conditional preference restoration.
+Restarting after title-file installation resolved the earlier discovery failure.
+Exclusive simulation suspends the bridge and is excluded. Receipt/document state
+is explicit; no engine running-state getter is claimed.
+
+Next: nested resource-holder inspection, supported resource reassignment, explicit
+script refresh and connected-client test configuration. Consumer Stage 1 gameplay
+remains incomplete; the user has authorized agent-driven real connected sessions
+for its two-player proof. Separate-machine human play remains follow-up coverage.

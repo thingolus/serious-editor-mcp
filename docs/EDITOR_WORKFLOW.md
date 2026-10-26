@@ -81,11 +81,66 @@ documents. Opening a parameter resource alone does not guarantee that
 through `editor_scene` / `editor_select_entity` before reading. Do not use a
 missing member result as evidence that the newly opened resource lacks a field.
 
+## Repeatable simulation
+
+Configure a default test in the editor's Simulation > Configure panel once. The
+verified configuration has one single-player simulation and uses the current
+world. Install title discovery files before starting the editor: its startup log
+must enumerate the intended `.gtitle`. A title copied after launch may require
+one editor restart even when the world's title reference is correct.
+
+Open an original project world through `editor_open_document`, then:
+
+```json
+{"name":"editor_start_simulation","arguments":{"documentId":"<open token>","withPlayer":true}}
+{"name":"editor_simulation","arguments":{}}
+{"name":"editor_stop_simulation","arguments":{"simulationId":"<returned token>"}}
+```
+
+Start requires `SERIOUS_EDITOR_ALLOW_MUTATION=1` and a world inside
+`SERIOUS_EDITOR_PROJECT_ROOT`. It runs `Command.StartDefaultSimNonExclusive` and
+retains the newly active simulation document. Native
+`prj_bAutoCreatePlayerInEditor` is set to `withPlayer` until stop. Stop checks
+document identity, invokes `Command.CloseDocument`, verifies the active document
+changed, and restores the preference only if it still equals this tool's value.
+An intervening preference change is preserved and reported. Source worlds are
+neither saved nor closed. The default configuration can have its own autosave,
+network and script effects; inspect it before running a test.
+
+`status: "document-created"` proves a distinct document was returned, not that
+the engine finished loading or a script passed. `running` deliberately stays
+null. Check **new** log lines for the requested world and its gameplay-specific
+evidence. `editor_simulation` also recovers the latest token after a timeout.
+Do not automatically repeat Start. A second tracked start and bridge reload
+are rejected until the simulation is stopped.
+
+Keep the simulation tab active until Stop. If another tab is selected, Stop
+refuses to close it. Select the simulation tab in the editor and retry. If the
+simulation was closed outside MCP, its retained record is not proof of a live
+simulation; restore any changed player preference deliberately before a manual
+bridge restart. Tokens do not survive that restart.
+
+Exclusive `Command.StartDefaultSim` suspends the calling bridge in the tested
+build and is intentionally not exposed. Nonexclusive mode with native player
+creation avoids that stall. Script resources can remain cached after external
+edits; a successful lifecycle test does not prove the latest source executed.
+Use a unique diagnostic version in world logs and explicitly refresh/reopen the
+resource or restart the editor when necessary. Automatic source refresh and
+multi-client configuration are not yet supported.
+
+Run `node scripts/live-simulation.js Content/YourMod/Test.wld` with root,
+mutation opt-in and project root set. It exercises three public-stdio cycles,
+checks new start/stop engine log lines, duplicate rejection, preference restoration,
+source-document return and unchanged source bytes. This runs the world's scripts;
+use a disposable original fixture. It does not certify gameplay or multiplayer.
+
 ## Failure recovery
 
 | Situation | Action |
 | --- | --- |
 | Changed disk hash | Inspect the external change. Do not replace the expected hash blindly and retry. |
+| Simulation timeout | Call `editor_simulation` and inspect fresh engine logs before any retry. Stop with its token if its document is active. |
+| No valid game title | Check startup title enumeration. Install the discovery file before launch, then restart once; changing the world reference alone cannot update that cached list. |
 | Save timeout/error after dispatch | Treat the save as uncertain. Inspect the document and file, compare hashes, and retain the backup reported by the error. Never automatically retry the save. |
 | Need to restore a backup | Close the target document and preserve any wanted pending edits. Compare the current file and backup first, then copy back deliberately. Reopen to verify. No automatic rollback is performed. |
 | Reload timeout | Ping to identify the running bridge. Tokens may already be gone. Inspect state rather than replaying edits. |

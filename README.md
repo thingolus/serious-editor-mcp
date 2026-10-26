@@ -8,13 +8,18 @@ Connect an MCP client to local package inspection, editor diagnostics and a smal
 Lua bridge running inside the editor. This is an independent community tool.
 You supply your own installed game and editor; no game assets are included.
 
-**v0.5 adds document opening, guarded saves, resource filenames and bridge reload.** You can preview, apply and
+**v0.6 adds guarded simulation start, inspection and stop.** Nonexclusive tests
+can create a player while keeping the bridge responsive; stop restores the prior
+player-creation preference. Three consecutive cycles pass in the installed editor.
+See [the editor workflow](docs/EDITOR_WORKFLOW.md) for configuration and recovery.
+
+You can preview, apply and
 undo entity-name, locator-Sphere and Script auto-run changes on a captured selection. These flows
 have passed real-editor tests. Undo restores that edit's previous property value;
 it does not invoke the editor's global undo command. Existing loose worlds and
 parameter resources can be opened without file dialogs. Saves use a retained
 concrete document handle, check an expected disk hash and create a backup.
-World creation, arbitrary property types and playtest control remain outside scope.
+World creation, arbitrary property types and multiplayer configuration remain outside scope.
 See [tested compatibility](docs/COMPATIBILITY.md) and [the roadmap](docs/ROADMAP.md).
 
 ## Setup
@@ -77,6 +82,9 @@ editor. Stdio is the only transport; the server opens no network listener.
 | `editor_open_document` | Opens/activates an existing loose `.wld` or `.ep` under `Content/`; returns a session token and disk hash. |
 | `editor_document` | Checks the retained document is active; returns disk hash and save eligibility. Dirty state remains unknown. |
 | `editor_save_document` | Saves a retained project document after identity/hash checks and a backup. Requires mutation opt-in and `SERIOUS_EDITOR_PROJECT_ROOT`. |
+| `editor_start_simulation` | Starts the default simulation nonexclusively from a retained project world; optional native player creation defaults on. Requires mutation opt-in and project root. Executes that world's scripts. |
+| `editor_simulation` | Reads the latest simulation receipt and whether its document is active. Does not infer gameplay readiness. |
+| `editor_stop_simulation` | Closes only the retained active simulation and conditionally restores the prior player-creation preference. |
 | `editor_has_member` | Checks an exact property path in the current editor context. |
 | `editor_read_member` | Reads an existing property; complex values retain descriptive strings. Resource userdata also returns `resourcePath` when its filename getter works. |
 | `editor_selection` | Captures exactly one selected entity and its document identity. |

@@ -1,5 +1,37 @@
 # Compatibility evidence
 
+## v0.6.0: nonexclusive simulation lifecycle (2026-10-26)
+
+Same Windows/Fusion/editor builds as v0.5. Twenty-eight offline tests and the
+24-tool public stdio smoke test pass. `scripts/live-simulation.js` passed three
+consecutive cycles on the consumer's original Stage 1 world:
+
+- The default nonexclusive native command creates a distinct simulation document.
+- New log lines show that exact world starting and stopping on every cycle.
+- `prj_bAutoCreatePlayerInEditor` is accessible directly in console Lua and makes
+  a player in nonexclusive mode. The earlier manual probe ran world scripts and
+  produced the expected NPC-spawn diagnostic after a one-second delay.
+- Stop closes the retained active simulation and returns to the source world.
+  Repeated stop returns the receipt. Duplicate start is rejected.
+- The prior player-creation preference is restored, the bridge remains responsive,
+  and the source world is byte-for-byte unchanged by the three-cycle test.
+
+Fake-engine tests separately cover failed start, ineffective close, changed
+active document, unknown tokens, reload rejection and preservation of an
+intervening preference change. They do not prove network behavior.
+
+The v0.5 title failure was caused by the editor starting **before** the loose
+title-discovery file was installed. Its startup title list omitted that title.
+After restart the same world reference loaded successfully. Exclusive start
+created a player but suspended the calling bridge; it is not exposed. Only the
+default single-player configuration was tested. Multi-simulation, network setup,
+automatic script refresh and engine running-state introspection remain unverified.
+The API reports document/receipt evidence and `running: null`, not gameplay success.
+
+The consumer's Sam spawn still fails despite its saved browsed-NPC entry and a
+delayed request. Source edits were cached until editor restart. These remain
+consumer investigation findings, not passing mod features.
+
 ## v0.5.0: document workflow and transport recovery (2026-10-26)
 
 Windows, Node 24.19.0, Fusion 3897313, Editor 3897336. The following were

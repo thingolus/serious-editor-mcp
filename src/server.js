@@ -33,7 +33,7 @@ export async function status(config) {
 }
 
 export function createServer(config = configuration()) {
-  const server = new McpServer({ name: 'serious-editor-mcp', version: '0.5.0' });
+  const server = new McpServer({ name: 'serious-editor-mcp', version: '0.6.0' });
   const documents = documentTools(config);
   function tool(name, description, schema, handler, readOnly = true) {
     server.registerTool(name, {
@@ -68,6 +68,17 @@ export function createServer(config = configuration()) {
     path: z.string().min(1).max(1024)
   }, async input => documents.open(await requireRoot(config), input.path), false);
   const documentId = { documentId: z.uuid().describe('Token from editor_open_document in this MCP session.') };
+  tool('editor_start_simulation', 'Start the default configured simulation nonexclusively from a retained project world. Executes its scripts. Requires mutation opt-in and project root. withPlayer temporarily sets the native auto-create-player option until stop. A created document is not proof of gameplay readiness; inspect new log evidence.', {
+    ...documentId, withPlayer: z.boolean().default(true)
+  }, async input => documents.startSimulation(await requireRoot(config),input.documentId,input.withPlayer),false);
+  tool('editor_simulation', 'Inspect the latest bridge-owned simulation receipt and whether its document is active. Use after a timeout. running remains unknown; verify engine and gameplay logs separately.',{},
+    async () => requestEditor(await requireRoot(config),'simulation'));
+  tool('editor_stop_simulation', 'Close only the retained simulation document when it is still active; conditionally restore the prior auto-create-player setting. Does not close/save source worlds. Requires mutation opt-in. Stop before reloading the bridge.', {
+    simulationId:z.uuid()
+  },async input=>{
+    if(!config.allowMutation)throw new Error('Editing is disabled. Set SERIOUS_EDITOR_ALLOW_MUTATION=1.');
+    return requestEditor(await requireRoot(config),'stop_simulation',input.simulationId,15000);
+  },false);
   tool('editor_document', 'Check the retained document is active and inspect its disk hash and save eligibility. Dirty state and native filename discovery remain unavailable.', documentId,
     async input => documents.inspect(await requireRoot(config), input.documentId));
   tool('editor_save_document', 'Save the retained concrete document after checking active identity and expected disk hash, with a unique backup. Requires mutation opt-in and SERIOUS_EDITOR_PROJECT_ROOT. Saves all pending document edits. Returns filesystem change evidence; reopen to verify content. On timeout inspect disk and backup before retrying.', {

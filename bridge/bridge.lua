@@ -46,6 +46,24 @@ local contexts, edits = {}, {}
 local contextOrder, editCount = {}, 0
 local scenes, sceneOrder = {}, {}
 local documents, documentOrder = {}, {}
+local simulation = nil
+local function simulationActive()
+  local doc=guiGetActiveDocument()
+  return simulation and simulation.document and type(doc)=="table" and doc._CT_OBJECT_USERDATA_==simulation.document._CT_OBJECT_USERDATA_ or false
+end
+local function simulationResult()
+  if not simulation then return '{"simulationId":null,"status":"none","running":null}' end
+  return '{"simulationId":'..quote(simulation.id)..',"status":'..quote(simulation.status)..
+    ',"requestedPath":'..quote(simulation.path)..',"activeDocument":'..tostring(simulationActive())..
+    ',"withPlayer":'..tostring(simulation.withPlayer)..',"playerSettingRestored":'..scalar(simulation.restored)..',"running":null}'
+end
+local function restorePlayerSetting()
+  -- Preserve a user change made while the simulation was running.
+  if prj_bAutoCreatePlayerInEditor==simulation.withPlayer then
+    prj_bAutoCreatePlayerInEditor=simulation.previousPlayer
+    simulation.restored=prj_bAutoCreatePlayerInEditor==simulation.previousPlayer
+  else simulation.restored=false end
+end
 local function currentDocument()
   local doc = guiGetActiveDocument()
   if type(doc) ~= "table" or not doc._CT_OBJECT_USERDATA_ then error("No active editor document") end
@@ -151,7 +169,7 @@ local function dispatch(operation, encoded, id)
   local argument = unhex(encoded)
   if argument:find("%z") then error("Invalid property path") end
   if operation == "ping" then
-    return '{"bridgeVersion":"0.5.0","luaVersion":' .. quote(_VERSION) ..
+    return '{"bridgeVersion":"0.6.0","luaVersion":' .. quote(_VERSION) ..
       ',"readOnly":false,"undoMode":"conditional-property-restore","getMember":' .. tostring(type(edtGetMemberValue) == "function") ..
       ',"hasMember":' .. tostring(type(edtHasMemberValue) == "function") .. '}'
   elseif operation == "document" then
@@ -163,6 +181,38 @@ local function dispatch(operation, encoded, id)
     local result = edtOpenDocument(argument)
     if type(result) ~= "table" or not result._CT_OBJECT_USERDATA_ then error("Open did not return a document handle") end
     return documentResult(id, argument, result)
+  elseif operation == "simulation" then
+    return simulationResult()
+  elseif operation == "stop_simulation" then
+    if not simulation or simulation.id~=argument then error("Unknown simulation token; inspect editor_simulation") end
+    if simulation.status=="stopped" then return simulationResult() end
+    if not simulationActive() then error("Simulation document is not active; select its editor tab before stopping") end
+    simulation.status="stop-requested"
+    edtExecuteCommand("Command.CloseDocument")
+    if simulationActive() then error("Simulation close did not change the active document; inspect editor") end
+    simulation.status="stopped"
+    restorePlayerSetting()
+    return simulationResult()
+  elseif operation == "start_simulation" then
+    local documentId,player=argument:match('^([a-f0-9%-]+)\n([01])$')
+    if not documentId then error("Expected document token and player option") end
+    if simulation and simulation.status~="stopped" and simulation.status~="failed" then error("A tracked simulation already exists; inspect/stop it first") end
+    local record = checkedDocument(documentId)
+    if not record.path:match("%.wld$") then error("Simulation requires an opened world") end
+    if type(prj_bAutoCreatePlayerInEditor)~="boolean" then error("Required player-creation setting unavailable") end
+    simulation={id=id,path=record.path,status="start-requested",withPlayer=player=="1",previousPlayer=prj_bAutoCreatePlayerInEditor}
+    prj_bAutoCreatePlayerInEditor=simulation.withPlayer
+    local ok,problem=pcall(edtExecuteCommand,"Command.StartDefaultSimNonExclusive")
+    local active=guiGetActiveDocument()
+    if type(active)=="table" and active._CT_OBJECT_USERDATA_ and active._CT_OBJECT_USERDATA_~=record.document._CT_OBJECT_USERDATA_ then
+      simulation.document=active
+      simulation.status=ok and "document-created" or "uncertain"
+    else
+      simulation.status="failed";restorePlayerSetting()
+      error("Simulation did not create an active document; inspect editor log: "..tostring(problem))
+    end
+    if not ok then error("Simulation start uncertain; inspect editor_simulation: "..tostring(problem)) end
+    return simulationResult()
   elseif operation == "save_document" then
     local record = checkedDocument(argument)
     -- guiGetActiveDocument returns an interface, not the concrete handle required here.
@@ -170,6 +220,7 @@ local function dispatch(operation, encoded, id)
     return '{"saveRequested":true,"saved":null}'
   elseif operation == "reload_bridge" then
     if argument ~= "expire-contexts" then error("Reload requires explicit context-expiry acknowledgement") end
+    if simulation and simulation.status~="stopped" and simulation.status~="failed" then error("Stop the tracked simulation before reloading the bridge") end
     state.reloadId = id
     state.reload = true
     state.running = false
@@ -253,10 +304,10 @@ end
 -- Ignore the pre-existing request on startup. A restart must never replay a mutation.
 local _, initial = pcall(strLoadText_unsigned, base .. "request.txt")
 local lastId = type(initial) == "string" and initial:gsub("\r\n", "\n"):match("^SE_MCP/1\n([a-f0-9%-]+)\n") or nil
-print("[EditorMCP] bridge 0.5.0 started; conditional edit/undo; stop with globals.EditorMcpBridgeState.running=false")
+print("[EditorMCP] bridge 0.6.0 started; conditional edit/undo; stop with globals.EditorMcpBridgeState.running=false")
 -- Acknowledge only from the new listener: no request can fall into the reload gap.
 local pendingResponse, responseAttempts = nil, 0
-if reloadId then pendingResponse="SE_MCP/1\n"..reloadId.."\nok\n{\"reloaded\":true,\"tokensExpired\":true,\"bridgeVersion\":\"0.5.0\"}\n" end
+if reloadId then pendingResponse="SE_MCP/1\n"..reloadId.."\nok\n{\"reloaded\":true,\"tokensExpired\":true,\"bridgeVersion\":\"0.6.0\"}\n" end
 local function flushResponse()
   if not pendingResponse then return end
   responseAttempts=responseAttempts+1

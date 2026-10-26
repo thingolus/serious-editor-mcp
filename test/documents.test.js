@@ -8,6 +8,17 @@ import {sha256} from '../src/files.js';
 import {installBridge,reloadBridge} from '../src/bridge.js';
 
 const id='10000000-0000-4000-8000-000000000001';
+test('simulation requires mutation opt-in and a retained project world',async t=>{
+  for(const opts of [{allowMutation:false},{projectRoot:undefined},{projectRoot:'Content/Other'}]){
+    const s=await setup(t,opts);await s.tools.open(s.root,s.relative);
+    await assert.rejects(s.tools.startSimulation(s.root,id,true));
+    assert.equal(s.ops.includes('start_simulation'),false);
+  }
+  const s=await setup(t);await s.tools.open(s.root,s.relative);
+  await s.tools.startSimulation(s.root,id,true);
+  assert.deepEqual(s.ops,['open_document','document','start_simulation']);
+  await assert.rejects(s.tools.startSimulation(s.root,id,'true'));
+});
 async function setup(t, options={}) {
   const root=await fixture(t);
   const relative='Content/Fixture/World.wld';

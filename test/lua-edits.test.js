@@ -37,6 +37,17 @@ function run(steps, initial = '', bootstrap = '') {
     mock.nativeDocument={_CT_OBJECT_USERDATA_={}}
     function edtOpenDocument(p) mock.opened=p; return mock.nativeDocument end
     function edtSaveDocument(d) assert(d==mock.nativeDocument,'must save concrete handle'); mock.saves=(mock.saves or 0)+1 end
+    prj_bAutoCreatePlayerInEditor=false
+    function edtExecuteCommand(command)
+      if command=='Command.StartDefaultSimNonExclusive' then
+        mock.starts=(mock.starts or 0)+1
+        mock.playerDuringStart=prj_bAutoCreatePlayerInEditor and 1 or 0
+        if not mock.failStart then mock.document={_CT_OBJECT_USERDATA_={}} end
+      elseif command=='Command.CloseDocument' then
+        mock.closes=(mock.closes or 0)+1
+        if not mock.failClose then mock.document=document end
+      else error('Unexpected native command') end
+    end
     function dofile(p) mock.reloadPath=p end
     function guiGetActiveDocument() return mock.document end
     function edtCountSelectedEntityProperties() return mock.count end
@@ -72,7 +83,7 @@ function run(steps, initial = '', bootstrap = '') {
       lua.lua_pop(L, 1);
     }
     const operations={};
-    for(const key of ['saves','opened','reloadPath']) {
+    for(const key of ['saves','opened','reloadPath','starts','closes','playerDuringStart']) {
       lua.lua_getfield(L,-1,to_luastring(key));
       operations[key]=lua.lua_type(L,-1)===lua.LUA_TNUMBER?lua.lua_tonumber(L,-1):lua.lua_tojsstring(L,-1);
       lua.lua_pop(L,1);
@@ -95,6 +106,58 @@ test('actual Lua bridge previews, applies once, reports and conditionally undoes
   assert.equal(result.responses[4].status, 'applied');
   assert.equal(result.responses[6].status, 'undone');
   assert.deepEqual(result.mock, { name: 'Locator001', sphere: 0, sets: 2 });
+});
+
+test('simulation lifecycle is bound to its document, restores player setting, and rejects duplicates/reload',()=>{
+  const r=run([
+    {op:'open_document',arg:'Content/Fixture/Test.wld'},
+    {op:'start_simulation',arg:`${id(1)}\n1`},
+    {op:'simulation'},
+    {op:'start_simulation',arg:`${id(1)}\n1`},
+    {op:'reload_bridge',arg:'expire-contexts'},
+    {op:'stop_simulation',arg:id(2)},
+    {op:'stop_simulation',arg:id(2)},
+    {op:'simulation',before:'assert(prj_bAutoCreatePlayerInEditor==false)'}
+  ]);
+  assert.equal(r.responses[1].status,'document-created');
+  assert.equal(r.responses[1].running,null);
+  assert.equal(r.responses[2].activeDocument,true);
+  assert.ok(r.responses[3].error&&r.responses[4].error);
+  assert.equal(r.responses[5].status,'stopped');
+  assert.equal(r.responses[5].playerSettingRestored,true);
+  assert.equal(r.operations.starts,1);assert.equal(r.operations.closes,1);
+  assert.equal(r.operations.playerDuringStart,1);
+});
+
+test('simulation failures and changed selection cannot close a source document',()=>{
+  const r=run([
+    {op:'open_document',arg:'Content/Fixture/Test.wld'},
+    {op:'start_simulation',arg:`${id(1)}\n1`,before:'mock.failStart=true'},
+    {op:'simulation',before:'assert(prj_bAutoCreatePlayerInEditor==false)'},
+    {op:'start_simulation',arg:`${id(1)}\n1`,before:'mock.failStart=false'},
+    {op:'stop_simulation',arg:id(4),before:'mock.document={_CT_OBJECT_USERDATA_={}}'},
+    {op:'stop_simulation',arg:id(99)}
+  ]);
+  assert.ok(r.responses[1].error);
+  assert.equal(r.responses[2].status,'failed');
+  assert.ok(r.responses[4].error&&r.responses[5].error);
+  assert.equal(r.operations.closes,null);
+});
+
+test('simulation cleanup preserves an intervening user preference and reports ineffective close',()=>{
+  const r=run([
+    {op:'open_document',arg:'Content/Fixture/Test.wld'},
+    {op:'start_simulation',arg:`${id(1)}\n0`},
+    {op:'stop_simulation',arg:id(2),before:'mock.failClose=true'},
+    {op:'simulation'},
+    {op:'stop_simulation',arg:id(2),before:'mock.failClose=false;prj_bAutoCreatePlayerInEditor=true'},
+    {op:'simulation',before:'assert(prj_bAutoCreatePlayerInEditor==true)'}
+  ]);
+  assert.ok(r.responses[2].error);
+  assert.equal(r.responses[3].status,'stop-requested');
+  assert.equal(r.responses[4].playerSettingRestored,false);
+  assert.equal(r.responses[4].status,'stopped');
+  assert.equal(r.operations.playerDuringStart,0);
 });
 
 test('documents retain concrete save handles and reject invalid paths, expired tokens and changed active context', () => {
@@ -125,7 +188,7 @@ test('reload requires expiry acknowledgement, uses a fixed path and acknowledges
   const started=run([{op:'ping'}],'',`globals.EditorMcpBridgeState={running=false,reloadId='${id(99)}'}`);
   assert.equal(started.responses[0].reloaded,true);
   assert.equal(started.responses[0].tokensExpired,true);
-  assert.equal(started.responses[1].bridgeVersion,'0.5.0');
+  assert.equal(started.responses[1].bridgeVersion,'0.6.0');
 });
 
 test('scene snapshots restore selection and reject stale documents and removed entities', () => {

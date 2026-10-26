@@ -18,7 +18,7 @@ for (const mode of ['legacy', 'auto']) {
     t.after(() => client.close());
     await client.connect(transport);
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 21);
+    assert.equal(listed.tools.length, 24);
     assert.equal(listed.tools.some(tool => /execute|set_member/.test(tool.name)), false);
     const result = await client.callTool({ name: 'editor_status', arguments: {} });
     assert.equal(result.structuredContent.editorInstalled, true);
@@ -28,6 +28,8 @@ for (const mode of ['legacy', 'auto']) {
     assert.match(install.content[0].text, /disabled/);
     for (const [name,args] of [
       ['editor_reload_bridge',{acknowledgeTokenExpiry:true}],
+      ['editor_start_simulation',{documentId:'10000000-0000-4000-8000-000000000001'}],
+      ['editor_stop_simulation',{simulationId:'10000000-0000-4000-8000-000000000001'}],
       ['editor_save_document',{documentId:'10000000-0000-4000-8000-000000000001',expectedSha256:'0'.repeat(64)}]
     ]) {
       const denied=await client.callTool({name,arguments:args});
