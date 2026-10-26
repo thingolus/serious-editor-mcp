@@ -14,7 +14,7 @@ try {
   const tools = await client.listTools();
   const ping = await client.callTool({ name: 'editor_ping', arguments: {} });
   assert.ok(!ping.isError, JSON.stringify(ping));
-  assert.equal(ping.structuredContent.bridgeVersion, '0.4.0');
+  assert.equal(ping.structuredContent.bridgeVersion, '0.8.0');
   const missing = await client.callTool({ name: 'editor_has_member', arguments: { path: '__editor_mcp_intentionally_missing__' } });
   assert.ok(!missing.isError, JSON.stringify(missing));
   assert.equal(missing.structuredContent.exists, false);

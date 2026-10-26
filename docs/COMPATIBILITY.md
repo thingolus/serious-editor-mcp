@@ -1,5 +1,122 @@
 # Compatibility evidence
 
+## v0.8.0: background simulation (2026-10-26)
+
+The installed editor exposes `sim_bAutoPause` as numeric `1`, despite its help
+entry describing a Boolean cvar. The new `runInBackground` option validates that
+numeric binding and temporarily sets it to `0`. It is off by default.
+
+Thirty-three offline tests and Lua 5.1 syntax checks pass. The live public stdio
+simulation test passed three background-enabled cycles with new start/stop log
+lines, duplicate-start rejection, both preferences restored, and unchanged world
+bytes. The fake-engine cases cover prior values 0 and 1, an unavailable binding,
+invalid input, opt-out, failed starts, ineffective closes and intervening changes.
+
+The consumer's original damageable-puppet fixture passed a separate timed check:
+with the runtime client in the foreground, the editor logged all ten one-second
+heartbeats while puppet health remained 80 after host-applied damage. Guarded Stop
+then restored auto-pause from 0 to the recorded 1. This proves background game-time
+advancement in this build; it is not proof of multiplayer gameplay.
+
+Recovery and receipt fields are documented in the
+[simulation workflow](EDITOR_WORKFLOW.md#repeatable-simulation). This release adds
+no automatic startup, arbitrary cvar setter, Lua execution endpoint or new tool.
+The public surface remains 25 tools.
+
+## v0.7.0: selection-bound nested inspection (2026-10-26)
+
+Thirty offline tests, Lua 5.1 syntax checking and the 25-tool public stdio smoke
+test pass on the same installation as v0.6. `scripts/live-members.js` passed on
+a disposable copy of the consumer's original Stage 1 world. It read the manager
+name and both nested character-ID/bot-type paths through the public MCP tool,
+matched individual reads, reported a missing path, rejected a different selected
+entity, succeeded after reselecting the target and left the file hash unchanged.
+
+The actual native paths use `/` and `/[0]`; the earlier dotted-path experiment
+was invalid. This establishes nested leaf reads, not whole-holder serialization
+or resource assignment. Fake-engine tests also reject invalid/duplicate/oversized
+path sets and context changes during a read, with no writes or partial results.
+
+Follow-up regression checks found old v0.6 version assertions in the document,
+edit and simulation scripts. Those three scripts now obtain the expected version
+from package.json. All three passed against v0.7: two guarded saves with name
+restoration and stale-hash rejection, locator name/Sphere apply/undo, and three
+nonexclusive simulation cycles with unchanged source file and restored preference.
+
+The consumer's `dofile`-loaded gameplay probe picked up edits on subsequent
+simulations without restarting the editor. Its directly bound entry resource had
+previously stayed cached. No general resource/script-refresh operation is exposed.
+
+Further consumer tests now spawn its bot in a fresh dedicated process using an
+alternate saved manager-list configuration. Damage, navigation and multiplayer
+gameplay remain open; this is not a passing mod milestone. Experimental resource
+assignment/reinitialization commands are not included in this release.
+
+## v0.6.0: nonexclusive simulation lifecycle (2026-10-26)
+
+Same Windows/Fusion/editor builds as v0.5. Twenty-eight offline tests and the
+24-tool public stdio smoke test pass. `scripts/live-simulation.js` passed three
+consecutive cycles on the consumer's original Stage 1 world:
+
+- The default nonexclusive native command creates a distinct simulation document.
+- New log lines show that exact world starting and stopping on every cycle.
+- `prj_bAutoCreatePlayerInEditor` is accessible directly in console Lua and makes
+  a player in nonexclusive mode. The earlier manual probe ran world scripts and
+  produced the expected NPC-spawn diagnostic after a one-second delay.
+- Stop closes the retained active simulation and returns to the source world.
+  Repeated stop returns the receipt. Duplicate start is rejected.
+- The prior player-creation preference is restored, the bridge remains responsive,
+  and the source world is byte-for-byte unchanged by the three-cycle test.
+
+Fake-engine tests separately cover failed start, ineffective close, changed
+active document, unknown tokens, reload rejection and preservation of an
+intervening preference change. They do not prove network behavior.
+
+The v0.5 title failure was caused by the editor starting **before** the loose
+title-discovery file was installed. Its startup title list omitted that title.
+After restart the same world reference loaded successfully. Exclusive start
+created a player but suspended the calling bridge; it is not exposed. Only the
+default single-player configuration was tested. Multi-simulation, network setup,
+automatic script refresh and engine running-state introspection remain unverified.
+The API reports document/receipt evidence and `running: null`, not gameplay success.
+
+The consumer's Sam spawn still fails despite its saved browsed-NPC entry and a
+delayed request. Source edits were cached until editor restart. These remain
+consumer investigation findings, not passing mod features.
+
+## v0.5.0: document workflow and transport recovery (2026-10-26)
+
+Windows, Node 24.19.0, Fusion 3897313, Editor 3897336. The following were
+verified on original consumer fixtures, with no stock files overwritten:
+
+| Check | Result |
+| --- | --- |
+| Open/activate | `edtOpenDocument` opens loose `.wld` and `.ep` files without file-dialog navigation. The return is a concrete document proxy. |
+| Two document interfaces | `guiGetActiveDocument` exposes an `IWorldDocument`; Open returns `CWorldDocument`. Their retained userdata differs. |
+| Native save | `edtSaveDocument` with the concrete Open handle saves the world. The earlier active-interface attempt was ineffective. |
+| Public stdio document flow | Open, inspect, rename locator, save with backup, stale hash rejection, checked name restoration and second save passed. |
+| Independent persistence | Closed the saved Stage 0 fixture through File > Close; MCP reopened it from disk and scene inventory preserved `RC_RouteStart`. No unsaved-change prompt appeared. |
+| Resource filename | Script `ep_pssScriptSource` userdata supports `GetFileName`; resolved the consumer's bound Stage 1 `Entry.lua`. Holder arrays remain unsupported. |
+| Bridge reload | Installed-source hash verification, fixed-path reload, acknowledgement from the new listener, immediate ping and expired document token rejection passed. |
+| Windows IPC | Live testing exposed `strSaveText` logging error 32 without throwing, losing a response. The bridge now verifies read-back and retries the cached response; fake-engine tests prove no repeated mutation. The final live document flow passed with this change. |
+| Offline coverage | 24 tests: actual Lua bridge, namespace/hash/backup checks, uncertain and unchanged saves, reload gating, response retries, stdio opt-in and existing package/help/edit coverage. |
+| Live smoke | 21 tools discovered; Lua 5.1 ping, missing-member/error recovery and 12 installed package names passed. |
+
+No dirty-state or native filename accessor has been established. `requestedPath`
+comes from the explicit Open request; the tool does not pretend it queried the
+editor's filename. Backups cover the single target file, not dependent resources.
+Resource `.ep` opening was tested; positive save/reopen mutation evidence is for
+the original `.wld` fixture. Other resource-specific save side effects are untested.
+Opening CommonSam.ep left a separate property panel context active: reading its
+documented bot-type field returned a missing-member error. Open/activate is not
+proof that generic member queries now address that resource's properties.
+
+`Command.StartDefaultSimNonExclusive` reached the engine's simulation path but
+reported no valid game title and initialization failure. Configuration setters
+attempted during investigation did not fix that state. This is a known missing
+capability, **not** a passing playtest API; no simulation tool is published.
+The following sections retain historical evidence and limitations of older versions.
+
 ## v0.4.1: installed help search (2026-10-24)
 
 Seventeen offline tests pass, including stdio help search in legacy/auto modes,

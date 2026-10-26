@@ -4,7 +4,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { confinedPath, readBounded, atomicWrite, exists, sha256 } from './files.js';
 
 export const BRIDGE_DIRECTORY = 'Content/EditorMcp';
-export const COMMANDS = new Set(['ping', 'has_member', 'get_member', 'selection', 'scene', 'select_entity', 'preview_edit', 'apply_edit', 'undo_edit', 'edit_status']);
+export const COMMANDS = new Set(['ping', 'has_member', 'get_member', 'read_selection_members', 'selection', 'scene', 'select_entity', 'preview_edit', 'apply_edit', 'undo_edit', 'edit_status', 'document', 'open_document', 'reload_bridge', 'save_document', 'start_simulation', 'simulation', 'stop_simulation']);
 
 export async function installBridge(root) {
   const directory = await confinedPath(root, BRIDGE_DIRECTORY);
@@ -27,14 +27,24 @@ export async function installBridge(root) {
   const request = await confinedPath(root, `${BRIDGE_DIRECTORY}/request.txt`);
   try { await fs.writeFile(request, '', { flag: 'wx' }); }
   catch (error) { if (error.code !== 'EEXIST') throw error; }
-  await atomicWrite(receiptPath, JSON.stringify({ version: '0.4.0', sha256: hash }, null, 2) + '\n');
+  await atomicWrite(receiptPath, JSON.stringify({ version: '0.8.0', sha256: hash }, null, 2) + '\n');
   return { installed: true, script: `${BRIDGE_DIRECTORY}/bridge.lua`, sha256: hash,
     start: 'In Serious Editor use Script > Run script from file and select Content/EditorMcp/bridge.lua. This tool does not start or auto-load it.' };
 }
 
+export async function reloadBridge(root) {
+  const source = await fs.readFile(new URL('../bridge/bridge.lua', import.meta.url));
+  const installed = await readBounded(await confinedPath(root, `${BRIDGE_DIRECTORY}/bridge.lua`));
+  const receipt = JSON.parse(await readBounded(await confinedPath(root, `${BRIDGE_DIRECTORY}/install.json`), 4096));
+  if (sha256(installed) !== sha256(source) || receipt.sha256 !== sha256(installed)) {
+    throw new Error('Install this checkout\'s owned bridge before reloading; source, installed file and receipt must match.');
+  }
+  return requestEditor(root, 'reload_bridge', 'expire-contexts', 15000);
+}
+
 export function encodeRequest(id, operation, argument = '') {
   if (!/^[a-f0-9-]{36}$/.test(id) || !COMMANDS.has(operation)) throw new Error('Invalid bridge command.');
-  if (Buffer.byteLength(argument) > (operation === 'preview_edit' ? 4096 : 1024) || argument.includes('\0')) throw new Error('Argument is invalid or too long.');
+  if (Buffer.byteLength(argument) > (['preview_edit','read_selection_members'].includes(operation) ? 4096 : 1024) || argument.includes('\0')) throw new Error('Argument is invalid or too long.');
   return `SE_MCP/1\n${id}\n${operation}\n${Buffer.from(argument).toString('hex')}\n`;
 }
 

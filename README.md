@@ -8,11 +8,29 @@ Connect an MCP client to local package inspection, editor diagnostics and a smal
 Lua bridge running inside the editor. This is an independent community tool.
 You supply your own installed game and editor; no game assets are included.
 
-**v0.4.1 adds installed engine-help search; v0.4 added scene inventory and verified entity selection.** You can preview, apply and
+**v0.8 adds opt-in background simulation.** Set `runInBackground: true` to keep
+the nonexclusive simulation ticking when another app has focus. Stop restores the
+previous auto-pause preference if it has not been changed independently. The
+default leaves auto-pause unchanged. See [the workflow](docs/EDITOR_WORKFLOW.md#repeatable-simulation)
+for receipt fields and recovery.
+
+v0.7 added selection-bound batch property inspection, including verified nested
+resource and array paths. Capture an entity once, read up to 16 paths, and reject
+changed selection/document context. Missing properties remain distinct from
+existing properties whose complex value cannot be represented.
+
+The v0.6 simulation tools provide guarded start, inspection and stop. Nonexclusive tests
+can create a player while keeping the bridge responsive; stop restores the prior
+player-creation preference. Three consecutive cycles pass in the installed editor.
+See [the editor workflow](docs/EDITOR_WORKFLOW.md) for configuration and recovery.
+
+You can preview, apply and
 undo entity-name, locator-Sphere and Script auto-run changes on a captured selection. These flows
 have passed real-editor tests. Undo restores that edit's previous property value;
-it does not invoke the editor's global undo command. World creation, saving,
-arbitrary property types and playtest control are still outside the tool's scope.
+it does not invoke the editor's global undo command. Existing loose worlds and
+parameter resources can be opened without file dialogs. Saves use a retained
+concrete document handle, check an expected disk hash and create a backup.
+World creation, arbitrary property types and multiplayer configuration remain outside scope.
 See [tested compatibility](docs/COMPATIBILITY.md) and [the roadmap](docs/ROADMAP.md).
 
 ## Setup
@@ -36,8 +54,9 @@ versions and refuses to overwrite independently changed scripts.
 
 Open Serious Editor, then choose **Script > Run script from file...** and select
 `Content/EditorMcp/bridge.lua`. A console line announces bridge startup. Repeat
-this after restarting the editor or updating the bridge; no automatic startup
-hook is installed. Reloading the script retires the previous listener.
+this after restarting the editor or upgrading from a pre-0.5 bridge; no automatic
+startup hook is installed. Once v0.5 is running, use `editor_reload_bridge` after
+installing an update. Reload retires the previous listener and expires all tokens.
 
 ## Connect an MCP client
 
@@ -70,9 +89,17 @@ editor. Stdio is the only transport; the server opens no network listener.
 | `editor_status` | Reports configuration and local installation; does not infer connectivity. |
 | `editor_install_bridge` | Installs the namespaced bridge; requires `SERIOUS_EDITOR_ALLOW_INSTALL=1`. The explicit CLI installer above also works. |
 | `editor_ping` | Gets the live bridge version, Lua version and available member functions. |
+| `editor_reload_bridge` | Verifies installed source/receipt hashes, reloads the fixed bridge path and acknowledges from the new listener. Requires mutation opt-in and token-expiry acknowledgement. |
+| `editor_open_document` | Opens/activates an existing loose `.wld` or `.ep` under `Content/`; returns a session token and disk hash. |
+| `editor_document` | Checks the retained document is active; returns disk hash and save eligibility. Dirty state remains unknown. |
+| `editor_save_document` | Saves a retained project document after identity/hash checks and a backup. Requires mutation opt-in and `SERIOUS_EDITOR_PROJECT_ROOT`. |
+| `editor_start_simulation` | Starts the default simulation nonexclusively from a retained project world. `withPlayer` defaults true; `runInBackground` defaults false. Requires mutation opt-in and project root. Executes that world's scripts. |
+| `editor_simulation` | Reads the latest simulation receipt and whether its document is active. Does not infer gameplay readiness. |
+| `editor_stop_simulation` | Closes only the retained active simulation and conditionally restores player creation and opted-in auto-pause preferences. |
 | `editor_has_member` | Checks an exact property path in the current editor context. |
-| `editor_read_member` | Reads an existing property; complex values are descriptive strings. |
+| `editor_read_member` | Reads an existing property; complex values retain descriptive strings. Resource userdata also returns `resourcePath` when its filename getter works. |
 | `editor_selection` | Captures exactly one selected entity and its document identity. |
+| `editor_read_selection_members` | Reads up to 16 exact paths against a captured selection, checking its document/entity before and after the read. Reports missing paths individually. |
 | `editor_scene` | Lists up to 200 unique entities with IDs, names, classes and positions; restores the prior selection. |
 | `editor_select_entity` | Selects an entity from a recent scene snapshot after checking document and entity identity. |
 | `editor_preview_edit` | Checks the target and expected old value; returns an edit token without changing the world. |
@@ -145,10 +172,53 @@ before/after values manually. After a transport timeout, inspect `editor_edit_st
 before retrying; if the bridge restarted, inspect the scene because receipts are gone.
 There is no automatic rollback of an uncertain write.
 
-Edits do not save files. **Use File > Save in Serious Editor**, then reopen the
-world to verify persistence when needed. The document filename accessor is not
+Edits do not save files. Use the guarded document workflow below or File > Save,
+then close and reopen the world to verify persistence when needed. The native document filename accessor is not
 available in the tested Lua binding, so selection returns `documentPath: null`;
 the tool binds to retained editor handles instead of inventing a filename.
+
+## Documents and faster iteration
+
+Set these additional variables in the MCP server environment for project saves:
+
+```json
+{
+  "SERIOUS_EDITOR_ALLOW_MUTATION": "1",
+  "SERIOUS_EDITOR_PROJECT_ROOT": "Content/YourMod"
+}
+```
+
+The project root must be one original content namespace. Stock/engine namespaces
+are rejected. Files must already exist on disk; archive-only resources, Save As
+and new-document creation are not supported. Accepted paths are ASCII letters,
+digits, spaces, `_`, `-`, `/` and `.`, with no traversal or trailing dots/spaces.
+Documents are limited to 64 MiB.
+
+1. Open `Content/YourMod/Levels/Test.wld` with `editor_open_document`.
+2. Inspect the scene and make a checked edit. Keep the returned `documentId`.
+3. Call `editor_document` to review the active identity, disk hash and eligibility.
+4. Call `editor_save_document` with that token and the observed `expectedSha256`.
+5. Review `fileChanged`, the new hash and the backup path. A no-change result
+   does **not** claim the save succeeded. Close the saved document in the editor
+   and reopen it through MCP when independent persistence proof is needed.
+
+Saving writes **all pending changes in that document**, including manual edits.
+The expected hash protects the on-disk file; it does not enumerate unsaved changes.
+The backup covers that file, not every dependent resource. Backups stay under
+`Content/EditorMcp/backups/` until you explicitly clean them up.
+
+For Script bindings, select the entity and read `ep_pssScriptSource`;
+`resourcePath` identifies the bound Lua file when supported. This is read-only:
+resource reassignment and nested holder/array serialization are not implemented.
+
+Nested **leaf reads** are supported: separate members with `/`, and use `/[0]`
+for the first array element. For example, the installed bot manager's character ID
+is `ep_pbphExpendableNPCs/pbph_apbpPlayerBotParams/[0]/pbp_idCharacterName`.
+Call `editor_selection`, then pass its `contextId` and a `paths` array to
+`editor_read_selection_members`. See the workflow guide for limits and recovery.
+
+See [the editor workflow and recovery guide](docs/EDITOR_WORKFLOW.md) for examples,
+timeouts, backups, update/reload steps and the exact UI operations still required.
 
 ## Boundaries and recovery
 
@@ -162,6 +232,9 @@ One request can be active per installation. Concurrent requests fail explicitly.
 If a client crashes, close MCP clients before manually removing the stale
 `Content/EditorMcp/client.lock`. Timeouts are errors, never proof of execution.
 The editor must be responsive; modal dialogs or long operations can delay replies.
+Brief Windows sharing violations retry complete request writes and cached
+responses. Response retries never execute the operation again. If delivery fails
+50 times, the listener stops; inspect the scene/disk before restarting it.
 Use one editor process per installation while the bridge is active.
 
 This is a local, same-user integration, not a security boundary against other
@@ -186,6 +259,11 @@ $env:SERIOUS_EDITOR_ALLOW_MUTATION = '1'
 pnpm run test:live-edits RC_RouteStart
 # Select the disposable Script entity, then test and restore its auto-run setting:
 node scripts/live-script.js RC_Smoke
+# Disposable saved world only; restores the locator name and saves both versions:
+$env:SERIOUS_EDITOR_PROJECT_ROOT = 'Content/YourMod'
+node scripts/live-documents.js Content/YourMod/Levels/Test.wld 1 LocatorName
+# Read/selection check; pass optional observed nested paths after the entity name:
+node scripts/live-members.js Content/YourMod/Levels/Test.wld LocatorName ep_bSphere
 ```
 
 Offline tests use disposable fake installations, original ZIP fixtures and the

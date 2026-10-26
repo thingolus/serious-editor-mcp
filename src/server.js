@@ -3,14 +3,16 @@ import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import { confinedPath, exists } from './files.js';
-import { BRIDGE_DIRECTORY, installBridge, requestEditor } from './bridge.js';
+import { BRIDGE_DIRECTORY, installBridge, requestEditor, reloadBridge } from './bridge.js';
+import { documentTools, validateProjectRoot } from './documents.js';
 import { listPackages, listEntries, readEntry } from './packages.js';
 import { searchHelp } from './help.js';
 
 export function configuration(env = process.env) {
   const root = env.SERIOUS_EDITOR_ROOT;
   if (root && !path.isAbsolute(root)) throw new Error('SERIOUS_EDITOR_ROOT must be an absolute installation path.');
-  return { root, allowInstall: env.SERIOUS_EDITOR_ALLOW_INSTALL === '1', allowMutation: env.SERIOUS_EDITOR_ALLOW_MUTATION === '1' };
+  return { root, allowInstall: env.SERIOUS_EDITOR_ALLOW_INSTALL === '1', allowMutation: env.SERIOUS_EDITOR_ALLOW_MUTATION === '1',
+    projectRoot: validateProjectRoot(env.SERIOUS_EDITOR_PROJECT_ROOT) };
 }
 
 export async function requireRoot(config) {
@@ -27,11 +29,12 @@ export async function status(config) {
   return { configured: true, editorInstalled: true,
     bridgeInstalled: await exists(await confinedPath(root, `${BRIDGE_DIRECTORY}/bridge.lua`)),
     connected: null, connectionCheck: 'Call editor_ping to verify a live response.',
-    allowInstall: config.allowInstall, liveMutationTools: true, allowMutation: Boolean(config.allowMutation), target: 'Serious Editor 2017 / Fusion' };
+    allowInstall: config.allowInstall, liveMutationTools: true, allowMutation: Boolean(config.allowMutation), projectRoot: config.projectRoot ?? null, target: 'Serious Editor 2017 / Fusion' };
 }
 
 export function createServer(config = configuration()) {
-  const server = new McpServer({ name: 'serious-editor-mcp', version: '0.4.1' });
+  const server = new McpServer({ name: 'serious-editor-mcp', version: '0.8.0' });
+  const documents = documentTools(config);
   function tool(name, description, schema, handler, readOnly = true) {
     server.registerTool(name, {
       description,
@@ -53,12 +56,45 @@ export function createServer(config = configuration()) {
     return installBridge(await requireRoot(config));
   }, false);
   tool('editor_ping', 'Request a live response from the explicitly started editor bridge. Timeout means disconnected or unresponsive; it is not success.', {}, async () => requestEditor(await requireRoot(config), 'ping'));
+  tool('editor_reload_bridge', 'Reload the installed bridge without UI navigation. Verifies source/install/receipt hashes; requires mutation opt-in and acknowledgement that all scene/edit/document tokens expire. Finish undo work first. Initial startup and upgrades from pre-0.5 still require the editor menu.', {
+    acknowledgeTokenExpiry: z.literal(true)
+  }, async () => {
+    if (!config.allowMutation) throw new Error('Editing is disabled. Set SERIOUS_EDITOR_ALLOW_MUTATION=1.');
+    const result = await reloadBridge(await requireRoot(config));
+    documents.clear();
+    return result;
+  }, false);
+  tool('editor_open_document', 'Open/activate an existing loose Content/... .wld or .ep document without a file dialog. Returns a session token and on-disk SHA256. Does not discard unsaved changes or save. Path is the explicit request, not filename discovery; inspect the scene/resource before saving.', {
+    path: z.string().min(1).max(1024)
+  }, async input => documents.open(await requireRoot(config), input.path), false);
+  const documentId = { documentId: z.uuid().describe('Token from editor_open_document in this MCP session.') };
+  tool('editor_start_simulation', 'Start the default configured simulation nonexclusively from a retained project world. Executes its scripts. Requires mutation opt-in and project root. withPlayer temporarily sets auto-create-player; runInBackground temporarily disables focus-loss auto-pause. Stop conditionally restores both settings. A created document is not proof of gameplay readiness; inspect new log evidence.', {
+    ...documentId, withPlayer: z.boolean().default(true), runInBackground: z.boolean().default(false)
+  }, async input => documents.startSimulation(await requireRoot(config),input.documentId,input.withPlayer,input.runInBackground),false);
+  tool('editor_simulation', 'Inspect the latest bridge-owned simulation receipt and whether its document is active. Use after a timeout. running remains unknown; verify engine and gameplay logs separately.',{},
+    async () => requestEditor(await requireRoot(config),'simulation'));
+  tool('editor_stop_simulation', 'Close only the retained simulation document when it is still active; conditionally restore the prior auto-create-player and opted-in auto-pause settings. Does not close/save source worlds. Requires mutation opt-in. Stop before reloading the bridge.', {
+    simulationId:z.uuid()
+  },async input=>{
+    if(!config.allowMutation)throw new Error('Editing is disabled. Set SERIOUS_EDITOR_ALLOW_MUTATION=1.');
+    return requestEditor(await requireRoot(config),'stop_simulation',input.simulationId,15000);
+  },false);
+  tool('editor_document', 'Check the retained document is active and inspect its disk hash and save eligibility. Dirty state and native filename discovery remain unavailable.', documentId,
+    async input => documents.inspect(await requireRoot(config), input.documentId));
+  tool('editor_save_document', 'Save the retained concrete document after checking active identity and expected disk hash, with a unique backup. Requires mutation opt-in and SERIOUS_EDITOR_PROJECT_ROOT. Saves all pending document edits. Returns filesystem change evidence; reopen to verify content. On timeout inspect disk and backup before retrying.', {
+    ...documentId, expectedSha256: z.string().regex(/^[a-f0-9]{64}$/)
+  }, async input => documents.save(await requireRoot(config), input.documentId, input.expectedSha256), false);
   tool('editor_has_member', 'Check whether an exact property path exists in the CURRENT editor context. The editor selection/context can change independently.', member,
     async input => requestEditor(await requireRoot(config), 'has_member', input.path));
-  tool('editor_read_member', 'Read an existing property from the CURRENT editor context. Primitive values are returned directly; complex engine values are descriptive strings. No world mutation.', member,
+  tool('editor_read_member', 'Read an existing property from the CURRENT editor context. Primitive values are returned directly; complex engine values are descriptive strings. For resource userdata, GetFileName is attempted and resourcePath is returned when supported, otherwise null. No world mutation.', member,
     async input => requestEditor(await requireRoot(config), 'get_member', input.path));
   tool('editor_selection', 'Capture exactly one selected entity and retain its document/entity identity. Returns a session context token; document filename discovery is not supported.', {},
     async () => requestEditor(await requireRoot(config), 'selection'));
+  tool('editor_read_selection_members', 'Read up to 16 distinct property paths after checking a captured document/entity selection, and recheck it before returning. Nested paths use / between members and /[0] for the first array element. Missing paths are reported individually. Complex nil values mean unavailable or null, not an empty array. Does not edit, expand UI panels or save.', {
+    contextId: z.uuid(),
+    paths: z.array(z.string().min(1).max(192).regex(/^[A-Za-z_][A-Za-z0-9_/\[\].-]*$/)).min(1).max(16)
+      .refine(paths => new Set(paths).size === paths.length, 'Paths must be distinct')
+  }, async input => requestEditor(await requireRoot(config), 'read_selection_members', `${input.contextId}\n${input.paths.join('\n')}`));
   tool('editor_scene', 'Snapshot up to 200 unique entities in the current world, including names, classes and positions. Temporarily enumerates selection and restores it. Does not save or change entity properties.', {},
     async () => requestEditor(await requireRoot(config), 'scene'));
   tool('editor_select_entity', 'Select an entity from a recent editor_scene snapshot after checking the retained document and entity identity. Changes editor selection only; then use editor_selection to capture an edit context.', {

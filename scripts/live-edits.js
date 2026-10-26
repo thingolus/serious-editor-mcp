@@ -1,5 +1,6 @@
 // Explicitly mutates and restores a selected disposable locator. Never runs in CI.
 import assert from 'node:assert/strict';
+import metadata from '../package.json' with {type:'json'};
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/client/stdio';
@@ -8,7 +9,7 @@ const expectedName = process.argv[2];
 if (!expectedName || !process.env.SERIOUS_EDITOR_ROOT || process.env.SERIOUS_EDITOR_ALLOW_MUTATION !== '1') {
   throw new Error('Set SERIOUS_EDITOR_ROOT and SERIOUS_EDITOR_ALLOW_MUTATION=1, then pass the exact selected disposable locator name as the first argument.');
 }
-const client = new Client({ name: 'serious-editor-live-edits', version: '0.4.0' });
+const client = new Client({ name: 'serious-editor-live-edits', version: metadata.version });
 const transport = new StdioClientTransport({ command: process.execPath,
   args: [fileURLToPath(new URL('../src/index.js', import.meta.url))],
   env: { ...getDefaultEnvironment(), SERIOUS_EDITOR_ROOT: process.env.SERIOUS_EDITOR_ROOT, SERIOUS_EDITOR_ALLOW_MUTATION: '1' } });
@@ -20,7 +21,7 @@ async function call(name, args = {}) {
 }
 try {
   await client.connect(transport);
-  assert.equal((await call('editor_ping')).bridgeVersion, '0.4.0');
+  assert.equal((await call('editor_ping')).bridgeVersion, metadata.version);
   const selected = await call('editor_selection');
   assert.equal(selected.name, expectedName, 'Wrong test entity selected');
   const originalName = await call('editor_read_member', { path: 'ep_strName' });

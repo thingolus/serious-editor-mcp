@@ -11,16 +11,22 @@ const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const value = v => `${typeof v === 'boolean' ? 'b' : 's'}\n${Buffer.from(String(v)).toString('hex')}`;
 const preview = (context, path, before, after) => `${id(context)}\n${path}\n${value(before)}\n${value(after)}`;
 
-function run(steps, initial = '') {
+function run(steps, initial = '', bootstrap = '') {
   const L = lauxlib.luaL_newstate();
   lualib.luaL_openlibs(L);
   const responses = [];
   lua.lua_pushjsfunction(L, state => { responses.push(lua.lua_tojsstring(state, 2)); return 0; });
-  lua.lua_setglobal(L, to_luastring('strSaveText'));
+  lua.lua_setglobal(L, to_luastring('hostSaveText'));
   const requests = steps.map((step, i) => `{wire=${JSON.stringify(encodeRequest(id(i + 1), step.op, step.arg ?? ''))}, before=function() ${step.before ?? ''} end}`).join(',\n');
   const setup = `
     globals={}; math=nil; print=function() end
     mock={name='Locator001',sphere=0,autorun='SAT_ALWAYS',count=1,sets=0}
+    function strSaveText(p,t)
+      if mock.failedResponseWrites and mock.failedResponseWrites>0 then
+        mock.failedResponseWrites=mock.failedResponseWrites-1;mock.retryPending=true;return
+      end
+      mock.retryPending=false;mock.lastResponse=t;hostSaveText(p,t)
+    end
     local document={_CT_OBJECT_USERDATA_={}}
     local entity={_CT_OBJECT_USERDATA_={}}
     function entity:GetEntityID() return 1 end
@@ -28,6 +34,23 @@ function run(steps, initial = '') {
     function entity:GetEntityClassName() return 'CLocatorEntity' end
     function entity:GetPlacement() return {vx=2,vy=3,vz=4} end
     mock.document=document; mock.entity=entity
+    mock.nativeDocument={_CT_OBJECT_USERDATA_={}}
+    function edtOpenDocument(p) mock.opened=p; return mock.nativeDocument end
+    function edtSaveDocument(d) assert(d==mock.nativeDocument,'must save concrete handle'); mock.saves=(mock.saves or 0)+1 end
+    prj_bAutoCreatePlayerInEditor=false
+    sim_bAutoPause=1
+    function edtExecuteCommand(command)
+      if command=='Command.StartDefaultSimNonExclusive' then
+        mock.starts=(mock.starts or 0)+1
+        mock.playerDuringStart=prj_bAutoCreatePlayerInEditor and 1 or 0
+        mock.autoPauseDuringStart=sim_bAutoPause
+        if not mock.failStart then mock.document={_CT_OBJECT_USERDATA_={}} end
+      elseif command=='Command.CloseDocument' then
+        mock.closes=(mock.closes or 0)+1
+        if not mock.failClose then mock.document=document end
+      else error('Unexpected native command') end
+    end
+    function dofile(p) mock.reloadPath=p end
     function guiGetActiveDocument() return mock.document end
     function edtCountSelectedEntityProperties() return mock.count end
     function edtGetSelectedEntityProperty() return mock.entity end
@@ -44,14 +67,15 @@ function run(steps, initial = '') {
     function Delay() end
     local requests={${requests}}
     local index=1; local first=true
-    function strLoadText_unsigned()
+    function strLoadText_unsigned(p)
+      if p=='Content/EditorMcp/response.txt' then return mock.lastResponse or '' end
       if first then first=false; return ${JSON.stringify(initial)} end
       local request=requests[index]; request.before(); return request.wire
     end
-    function Wait() index=index+1; if index>#requests then globals.EditorMcpBridgeState.running=false end end
+    function Wait() if not mock.retryPending then index=index+1 end; if index>#requests then globals.EditorMcpBridgeState.running=false end end
   `;
   try {
-    const code = lauxlib.luaL_dostring(L, to_luastring(setup + '\n' + source));
+    const code = lauxlib.luaL_dostring(L, to_luastring(setup + '\n' + bootstrap + '\n' + source));
     assert.equal(code, lua.LUA_OK, lua.lua_tojsstring(L, -1));
     lua.lua_getglobal(L, to_luastring('mock'));
     const mock = {};
@@ -60,7 +84,13 @@ function run(steps, initial = '') {
       mock[key] = lua.lua_type(L, -1) === lua.LUA_TNUMBER ? lua.lua_tonumber(L, -1) : lua.lua_tojsstring(L, -1);
       lua.lua_pop(L, 1);
     }
-    return { mock, responses: responses.map(text => {
+    const operations={};
+    for(const key of ['saves','opened','reloadPath','starts','closes','playerDuringStart','autoPauseDuringStart']) {
+      lua.lua_getfield(L,-1,to_luastring(key));
+      operations[key]=lua.lua_type(L,-1)===lua.LUA_TNUMBER?lua.lua_tonumber(L,-1):lua.lua_tojsstring(L,-1);
+      lua.lua_pop(L,1);
+    }
+    return { mock, operations, responses: responses.map(text => {
       const lines = text.split('\n'); return { status: lines[2], ...JSON.parse(lines[3]) };
     }) };
   } finally { lua.lua_close(L); }
@@ -78,6 +108,169 @@ test('actual Lua bridge previews, applies once, reports and conditionally undoes
   assert.equal(result.responses[4].status, 'applied');
   assert.equal(result.responses[6].status, 'undone');
   assert.deepEqual(result.mock, { name: 'Locator001', sphere: 0, sets: 2 });
+});
+
+test('selection member batches retain nested paths, missing paths and unsupported nil distinctly',()=>{
+  const nested='holder/params/[0]/character';
+  const r=run([
+    {op:'selection'},
+    {op:'read_selection_members',arg:`${id(1)}\nep_strName\n${nested}\nholder\nabsent`}
+  ],'',`
+    local oldHas,oldGet=edtHasMemberValue,edtGetMemberValue
+    function edtHasMemberValue(p) if p=='${nested}' or p=='holder' then return 1 end return oldHas(p) end
+    function edtGetMemberValue(p) if p=='${nested}' then return 'FixtureBot' elseif p=='holder' then return nil end return oldGet(p) end
+  `);
+  const m=r.responses[1].members;
+  assert.equal(m[0].member.value,'Locator001');
+  assert.equal(m[1].member.value,'FixtureBot');
+  assert.equal(m[2].exists,true);assert.equal(m[2].member.valueType,'nil');assert.equal(m[2].member.value,null);
+  assert.equal(m[3].exists,false);
+  assert.equal(r.mock.sets,0);
+});
+
+test('member batches reject unknown, stale, changed-during-read and malformed contexts without writes',()=>{
+  const invalid=[`${id(99)}\nep_strName`,`${id(1)}\nep_strName\nep_strName`,
+    `${id(1)}\nep_strName\n`,`${id(1)}\nx;print()`,`${id(1)}\n${'x'.repeat(193)}`,
+    `${id(1)}\n${Array.from({length:17},(_,i)=>`p${i}`).join('\n')}`];
+  const r=run([{op:'selection'},...invalid.map(arg=>({op:'read_selection_members',arg})),
+    {op:'read_selection_members',arg:`${id(1)}\nep_strName`,before:'mock.document={_CT_OBJECT_USERDATA_={}}'}]);
+  assert.ok(r.responses.slice(1).every(x=>x.status==='error'));
+  assert.equal(r.mock.sets,0);
+  const changed=run([{op:'selection'},{op:'read_selection_members',arg:`${id(1)}\nep_strName`}],'',`
+    function edtGetMemberValue(p) mock.document={_CT_OBJECT_USERDATA_={}};return 'wrong document' end
+  `);
+  assert.equal(changed.responses[1].status,'error');
+  assert.equal(changed.responses[1].members,undefined);
+});
+
+test('simulation lifecycle is bound to its document, restores player setting, and rejects duplicates/reload',()=>{
+  const r=run([
+    {op:'open_document',arg:'Content/Fixture/Test.wld'},
+    {op:'start_simulation',arg:`${id(1)}\n1`},
+    {op:'simulation'},
+    {op:'start_simulation',arg:`${id(1)}\n1`},
+    {op:'reload_bridge',arg:'expire-contexts'},
+    {op:'stop_simulation',arg:id(2)},
+    {op:'stop_simulation',arg:id(2)},
+    {op:'simulation',before:'assert(prj_bAutoCreatePlayerInEditor==false)'}
+  ]);
+  assert.equal(r.responses[1].status,'document-created');
+  assert.equal(r.responses[1].running,null);
+  assert.equal(r.responses[2].activeDocument,true);
+  assert.ok(r.responses[3].error&&r.responses[4].error);
+  assert.equal(r.responses[5].status,'stopped');
+  assert.equal(r.responses[5].playerSettingRestored,true);
+  assert.equal(r.operations.starts,1);assert.equal(r.operations.closes,1);
+  assert.equal(r.operations.playerDuringStart,1);
+});
+
+test('background simulation restores the observed numeric auto-pause preference',()=>{
+  for(const previous of [0,1]) {
+    const r=run([
+      {op:'open_document',arg:'Content/Fixture/Test.wld'},
+      {op:'start_simulation',arg:`${id(1)}\n1\n1`},
+      {op:'stop_simulation',arg:id(2)},
+      {op:'simulation',before:`assert(sim_bAutoPause==${previous})`}
+    ],'',`sim_bAutoPause=${previous}`);
+    assert.equal(r.responses[1].runInBackground,true);
+    assert.equal(r.responses[1].previousAutoPause,previous);
+    assert.equal(r.responses[2].backgroundSettingRestored,true);
+    assert.equal(r.operations.autoPauseDuringStart,0);
+  }
+});
+
+test('background cleanup handles failed start, ineffective close and user changes',()=>{
+  const r=run([
+    {op:'open_document',arg:'Content/Fixture/Test.wld'},
+    {op:'start_simulation',arg:`${id(1)}\n1\n1`,before:'mock.failStart=true'},
+    {op:'simulation',before:'assert(sim_bAutoPause==1)'},
+    {op:'start_simulation',arg:`${id(1)}\n1\n1`,before:'mock.failStart=false'},
+    {op:'stop_simulation',arg:id(4),before:'mock.failClose=true'},
+    {op:'simulation',before:'assert(sim_bAutoPause==0)'},
+    {op:'stop_simulation',arg:id(4),before:'mock.failClose=false;sim_bAutoPause=1'},
+    {op:'simulation',before:'assert(sim_bAutoPause==1)'}
+  ]);
+  assert.ok(r.responses[1].error&&r.responses[4].error);
+  assert.equal(r.responses[2].backgroundSettingRestored,true);
+  assert.equal(r.responses[5].backgroundSettingRestored,null);
+  assert.equal(r.responses[6].backgroundSettingRestored,false);
+});
+
+test('unavailable auto-pause is rejected before preference changes; opt-out leaves it alone',()=>{
+  const r=run([
+    {op:'open_document',arg:'Content/Fixture/Test.wld'},
+    {op:'start_simulation',arg:`${id(1)}\n1\n1`},
+    {op:'start_simulation',arg:`${id(1)}\n1\n2`},
+    {op:'start_simulation',arg:`${id(1)}\n1\n0`,before:'assert(prj_bAutoCreatePlayerInEditor==false);assert(sim_bAutoPause==nil)'},
+    {op:'stop_simulation',arg:id(4)},
+    {op:'simulation',before:'assert(sim_bAutoPause==nil)'}
+  ],'','sim_bAutoPause=nil');
+  assert.ok(r.responses[1].error&&r.responses[2].error);
+  assert.equal(r.responses[3].runInBackground,false);
+  assert.equal(r.responses[4].backgroundSettingRestored,null);
+  assert.equal(r.operations.starts,1);
+});
+
+test('simulation failures and changed selection cannot close a source document',()=>{
+  const r=run([
+    {op:'open_document',arg:'Content/Fixture/Test.wld'},
+    {op:'start_simulation',arg:`${id(1)}\n1`,before:'mock.failStart=true'},
+    {op:'simulation',before:'assert(prj_bAutoCreatePlayerInEditor==false)'},
+    {op:'start_simulation',arg:`${id(1)}\n1`,before:'mock.failStart=false'},
+    {op:'stop_simulation',arg:id(4),before:'mock.document={_CT_OBJECT_USERDATA_={}}'},
+    {op:'stop_simulation',arg:id(99)}
+  ]);
+  assert.ok(r.responses[1].error);
+  assert.equal(r.responses[2].status,'failed');
+  assert.ok(r.responses[4].error&&r.responses[5].error);
+  assert.equal(r.operations.closes,null);
+});
+
+test('simulation cleanup preserves an intervening user preference and reports ineffective close',()=>{
+  const r=run([
+    {op:'open_document',arg:'Content/Fixture/Test.wld'},
+    {op:'start_simulation',arg:`${id(1)}\n0`},
+    {op:'stop_simulation',arg:id(2),before:'mock.failClose=true'},
+    {op:'simulation'},
+    {op:'stop_simulation',arg:id(2),before:'mock.failClose=false;prj_bAutoCreatePlayerInEditor=true'},
+    {op:'simulation',before:'assert(prj_bAutoCreatePlayerInEditor==true)'}
+  ]);
+  assert.ok(r.responses[2].error);
+  assert.equal(r.responses[3].status,'stop-requested');
+  assert.equal(r.responses[4].playerSettingRestored,false);
+  assert.equal(r.responses[4].status,'stopped');
+  assert.equal(r.operations.playerDuringStart,0);
+});
+
+test('documents retain concrete save handles and reject invalid paths, expired tokens and changed active context', () => {
+  const result=run([
+    {op:'open_document',arg:'Content/Fixture/Test.wld'},
+    {op:'document',arg:id(1)},
+    {op:'save_document',arg:id(1)},
+    {op:'open_document',arg:'Content/../Escape.wld'},
+    {op:'open_document',arg:'Content/Fixture/code.lua'},
+    {op:'save_document',arg:id(99)},
+    {op:'save_document',arg:id(1),before:'mock.document={_CT_OBJECT_USERDATA_={}}'}
+  ]);
+  assert.equal(result.responses[0].requestedPath,'Content/Fixture/Test.wld');
+  assert.equal(result.responses[1].active,true);
+  assert.equal(result.responses[2].saveRequested,true);
+  assert.ok(result.responses.slice(3).every(r=>r.error));
+  assert.equal(result.operations.saves,1);
+  assert.equal(result.mock.sets,0);
+});
+
+test('reload requires expiry acknowledgement, uses a fixed path and acknowledges only from the replacement listener', () => {
+  const denied=run([{op:'reload_bridge',arg:'something else'}]);
+  assert.match(denied.responses[0].error,/acknowledgement/);
+  assert.equal(denied.operations.reloadPath,null);
+  const scheduled=run([{op:'reload_bridge',arg:'expire-contexts'}]);
+  assert.equal(scheduled.responses.length,0);
+  assert.equal(scheduled.operations.reloadPath,'Content/EditorMcp/bridge.lua');
+  const started=run([{op:'ping'}],'',`globals.EditorMcpBridgeState={running=false,reloadId='${id(99)}'}`);
+  assert.equal(started.responses[0].reloaded,true);
+  assert.equal(started.responses[0].tokensExpired,true);
+  assert.equal(started.responses[1].bridgeVersion,'0.8.0');
 });
 
 test('scene snapshots restore selection and reject stale documents and removed entities', () => {
@@ -160,6 +353,18 @@ test('Lua marks partial setter failure uncertain and refuses replay or undo', ()
   assert.match(result.responses[2].error, /uncertain/);
   assert.equal(result.responses[5].status, 'uncertain');
   assert.equal(result.mock.sets, 1);
+});
+
+test('response sharing failures retry delivery without executing an edit twice', () => {
+  const result=run([
+    {op:'selection'},
+    {op:'preview_edit',arg:preview(1,'ep_strName','Locator001','RC_Start')},
+    {op:'apply_edit',arg:id(2),before:'mock.failedResponseWrites=2'},
+    {op:'edit_status',arg:id(2)}
+  ]);
+  assert.equal(result.responses[2].status,'applied');
+  assert.equal(result.responses[3].status,'applied');
+  assert.equal(result.mock.sets,1);
 });
 
 test('Lua refuses unverified paths, wrong types, controls, stale contexts and startup requests', () => {

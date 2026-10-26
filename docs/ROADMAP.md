@@ -19,6 +19,9 @@ This proves connectivity, not full property access or world automation.
 Verified: saved/reopened original locator, string and numeric member reads, single
 selection identity and no-selection rejection. Filename discovery and positive
 engine-reference serialization remain open. See COMPATIBILITY.md for exact scope.
+v0.7 adds a bounded read batch tied to the captured document/entity selection.
+Nested resource/array leaf paths pass live; full array enumeration, resource
+assignment and generic resource-panel context still need separate verification.
 
 1. Create an original disposable world using the editor UI and save it under the
    consuming mod's namespace. Record its editor/build version.
@@ -38,14 +41,16 @@ Verified: name and Sphere preview/apply/read-back/conditional-undo through MCP,
 stale-value rejection, mutation opt-in and saved fixture reopen. Native undo-stack
 integration is not implemented: the observed setter did not add an undo entry.
 The tool restores its own previous value after checking the target and current
-value. Saving is manual; the scripted save attempt did not update the file.
+value. v0.5 adds guarded saves of existing project documents using the concrete
+handle returned by Open. The earlier active-interface save was ineffective.
 
 1. Verify the editor's setter and undo/transaction APIs in the disposable world.
 2. Add a narrow property-edit operation with an explicit target and expected old
    value, input limits, preview and an opt-in mutation capability.
 3. Demonstrate edit, read-back and undo. Test selection changes, stale values,
    invalid types and failure midway through an operation.
-4. Verify explicit save-as into a chosen project namespace before adding saving.
+4. Keep Save As/new-file authoring deferred until verified. Existing-file saves
+   require an explicit original namespace, expected disk hash and backup.
    Never overwrite a stock world as a side effect of an editing tool.
 
 **Pass:** the intended property changes once, undo restores it, and reopening a
@@ -113,3 +118,30 @@ shared bot-type member needed for a valid expendable NPC configuration. The
 consumer authored that configuration through the editor; resource creation and
 binding are still outside MCP. Search preserves owning classes and marks results
 as documentation only. No game documentation or assets are bundled here.
+
+### v0.5 shared progress (2026-10-26)
+
+Open/activate, concrete-handle saves, backup/hash checks, Script resource filename
+inspection and bridge reload now have live evidence. The independent close/reopen
+check preserved the consumer fixture's restored locator name. Repeated file-dialog
+navigation and bridge-menu reloads are no longer needed after initial startup.
+The transport also handles transient Windows file-sharing failures without
+replaying a mutation. See EDITOR_WORKFLOW.md for recovery and compatibility limits.
+
+### v0.6 shared progress (2026-10-26)
+
+v0.8 adds opt-in background ticking through the verified numeric `sim_bAutoPause`
+binding, with conditional preference restoration and failed-start recovery. It
+avoids repeated editor focus changes during timed tests. General cvar writes and
+automatic startup remain outside the public interface.
+
+Default nonexclusive simulation start/status/stop now pass three live public-stdio
+cycles, with optional native player creation and conditional preference restoration.
+Restarting after title-file installation resolved the earlier discovery failure.
+Exclusive simulation suspends the bridge and is excluded. Receipt/document state
+is explicit; no engine running-state getter is claimed.
+
+Next: nested resource-holder inspection, supported resource reassignment, explicit
+script refresh and connected-client test configuration. Consumer Stage 1 gameplay
+remains incomplete; the user has authorized agent-driven real connected sessions
+for its two-player proof. Separate-machine human play remains follow-up coverage.

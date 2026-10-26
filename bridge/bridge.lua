@@ -6,6 +6,7 @@ if type(edtGetMemberValue) ~= "function" then
 end
 
 local base = "Content/EditorMcp/"
+local reloadId = globals.EditorMcpBridgeState and globals.EditorMcpBridgeState.reloadId
 local state = { running = true }
 -- A reload retires the old coroutine without stacking multiple listeners.
 if globals.EditorMcpBridgeState then globals.EditorMcpBridgeState.running = false end
@@ -44,6 +45,51 @@ end
 local contexts, edits = {}, {}
 local contextOrder, editCount = {}, 0
 local scenes, sceneOrder = {}, {}
+local documents, documentOrder = {}, {}
+local simulation = nil
+local function simulationActive()
+  local doc=guiGetActiveDocument()
+  return simulation and simulation.document and type(doc)=="table" and doc._CT_OBJECT_USERDATA_==simulation.document._CT_OBJECT_USERDATA_ or false
+end
+local function simulationResult()
+  if not simulation then return '{"simulationId":null,"status":"none","running":null}' end
+  return '{"simulationId":'..quote(simulation.id)..',"status":'..quote(simulation.status)..
+    ',"requestedPath":'..quote(simulation.path)..',"activeDocument":'..tostring(simulationActive())..
+    ',"withPlayer":'..tostring(simulation.withPlayer)..',"playerSettingRestored":'..scalar(simulation.restored)..
+    ',"runInBackground":'..tostring(simulation.runInBackground)..',"previousAutoPause":'..scalar(simulation.previousAutoPause)..
+    ',"backgroundSettingRestored":'..scalar(simulation.backgroundRestored)..',"running":null}'
+end
+local function restoreSimulationSettings()
+  -- Preserve a user change made while the simulation was running.
+  if prj_bAutoCreatePlayerInEditor==simulation.withPlayer then
+    prj_bAutoCreatePlayerInEditor=simulation.previousPlayer
+    simulation.restored=prj_bAutoCreatePlayerInEditor==simulation.previousPlayer
+  else simulation.restored=false end
+  if simulation.runInBackground then
+    if sim_bAutoPause==0 then
+      sim_bAutoPause=simulation.previousAutoPause
+      simulation.backgroundRestored=sim_bAutoPause==simulation.previousAutoPause
+    else simulation.backgroundRestored=false end
+  end
+end
+local function currentDocument()
+  local doc = guiGetActiveDocument()
+  if type(doc) ~= "table" or not doc._CT_OBJECT_USERDATA_ then error("No active editor document") end
+  return doc
+end
+local function documentResult(id, path, nativeDocument)
+  local doc = currentDocument()
+  documents[id] = { document = doc, path = path, nativeDocument = nativeDocument }
+  documentOrder[#documentOrder+1] = id
+  if #documentOrder > 32 then documents[documentOrder[1]] = nil; table.remove(documentOrder, 1) end
+  return '{"documentId":'..quote(id)..',"requestedPath":'..scalar(path)..',"documentPath":null,"pathSource":"open request","dirty":null}'
+end
+local function checkedDocument(id)
+  local record=documents[id]
+  if not record or not record.nativeDocument then error("Unknown document token; open it through editor_open_document again") end
+  if currentDocument()._CT_OBJECT_USERDATA_ ~= record.document._CT_OBJECT_USERDATA_ then error("Active document changed; open the intended document again") end
+  return record
+end
 local function enumerateScene()
   local previous, entities, seen = {}, {}, {}
   for i=0,edtCountSelectedEntityProperties()-1 do previous[#previous+1]=edtGetSelectedEntityProperty(i) end
@@ -127,13 +173,84 @@ local function editResult(id, record)
     ',"undoMode":"conditional-property-restore","saved":false}'
 end
 
+local function memberResult(path)
+  local value = edtGetMemberValue(path)
+  local resourcePath=nil
+  if type(value)=="userdata" then
+    local ok,name=pcall(function() return value:GetFileName() end)
+    if ok and type(name)=="string" then resourcePath=name end
+  end
+  return '{"path":'..quote(path)..',"valueType":'..quote(type(value))..
+    ',"value":'..scalar(value)..',"resourcePath":'..scalar(resourcePath)..'}'
+end
+
 local function dispatch(operation, encoded, id)
   local argument = unhex(encoded)
   if argument:find("%z") then error("Invalid property path") end
   if operation == "ping" then
-    return '{"bridgeVersion":"0.4.0","luaVersion":' .. quote(_VERSION) ..
+    return '{"bridgeVersion":"0.8.0","luaVersion":' .. quote(_VERSION) ..
       ',"readOnly":false,"undoMode":"conditional-property-restore","getMember":' .. tostring(type(edtGetMemberValue) == "function") ..
       ',"hasMember":' .. tostring(type(edtHasMemberValue) == "function") .. '}'
+  elseif operation == "document" then
+    local record=checkedDocument(argument)
+    return '{"documentId":'..quote(argument)..',"active":true,"requestedPath":'..quote(record.path)..',"documentPath":null,"dirty":null}'
+  elseif operation == "open_document" then
+    if not argument:match('^Content/[A-Za-z0-9_ /%.%-]+$') or argument:find('..',1,true) or argument:find('//',1,true) or
+      not (argument:match('%.wld$') or argument:match('%.ep$')) then error("Invalid world/resource content path") end
+    local result = edtOpenDocument(argument)
+    if type(result) ~= "table" or not result._CT_OBJECT_USERDATA_ then error("Open did not return a document handle") end
+    return documentResult(id, argument, result)
+  elseif operation == "simulation" then
+    return simulationResult()
+  elseif operation == "stop_simulation" then
+    if not simulation or simulation.id~=argument then error("Unknown simulation token; inspect editor_simulation") end
+    if simulation.status=="stopped" then return simulationResult() end
+    if not simulationActive() then error("Simulation document is not active; select its editor tab before stopping") end
+    simulation.status="stop-requested"
+    edtExecuteCommand("Command.CloseDocument")
+    if simulationActive() then error("Simulation close did not change the active document; inspect editor") end
+    simulation.status="stopped"
+    restoreSimulationSettings()
+    return simulationResult()
+  elseif operation == "start_simulation" then
+    local documentId,player,background=argument:match('^([a-f0-9%-]+)\n([01])\n([01])$')
+    -- Preserve the old two-line protocol for existing clients.
+    if not documentId then documentId,player=argument:match('^([a-f0-9%-]+)\n([01])$');background="0" end
+    if not documentId then error("Expected document token, player option and optional background option") end
+    if simulation and simulation.status~="stopped" and simulation.status~="failed" then error("A tracked simulation already exists; inspect/stop it first") end
+    local record = checkedDocument(documentId)
+    if not record.path:match("%.wld$") then error("Simulation requires an opened world") end
+    if type(prj_bAutoCreatePlayerInEditor)~="boolean" then error("Required player-creation setting unavailable") end
+    if background=="1" and sim_bAutoPause~=0 and sim_bAutoPause~=1 then error("Required numeric auto-pause setting unavailable") end
+    simulation={id=id,path=record.path,status="start-requested",withPlayer=player=="1",previousPlayer=prj_bAutoCreatePlayerInEditor,runInBackground=background=="1"}
+    if simulation.runInBackground then
+      simulation.previousAutoPause=sim_bAutoPause
+      sim_bAutoPause=0
+    end
+    prj_bAutoCreatePlayerInEditor=simulation.withPlayer
+    local ok,problem=pcall(edtExecuteCommand,"Command.StartDefaultSimNonExclusive")
+    local active=guiGetActiveDocument()
+    if type(active)=="table" and active._CT_OBJECT_USERDATA_ and active._CT_OBJECT_USERDATA_~=record.document._CT_OBJECT_USERDATA_ then
+      simulation.document=active
+      simulation.status=ok and "document-created" or "uncertain"
+    else
+      simulation.status="failed";restoreSimulationSettings()
+      error("Simulation did not create an active document; inspect editor log: "..tostring(problem))
+    end
+    if not ok then error("Simulation start uncertain; inspect editor_simulation: "..tostring(problem)) end
+    return simulationResult()
+  elseif operation == "save_document" then
+    local record = checkedDocument(argument)
+    -- guiGetActiveDocument returns an interface, not the concrete handle required here.
+    edtSaveDocument(record.nativeDocument)
+    return '{"saveRequested":true,"saved":null}'
+  elseif operation == "reload_bridge" then
+    if argument ~= "expire-contexts" then error("Reload requires explicit context-expiry acknowledgement") end
+    if simulation and simulation.status~="stopped" and simulation.status~="failed" then error("Stop the tracked simulation before reloading the bridge") end
+    state.reloadId = id
+    state.reload = true
+    state.running = false
+    return '{}'
   elseif operation == "selection" then
     local target = selection()
     contexts[id] = target
@@ -141,6 +258,28 @@ local function dispatch(operation, encoded, id)
     if #contextOrder > 32 then contexts[contextOrder[1]] = nil; table.remove(contextOrder, 1) end
     return '{"contextId":' .. quote(id) .. ',"entityId":' .. scalar(target.entityId) ..
       ',"name":' .. quote(target.name) .. ',"documentPath":null,"documentIdentity":"retained editor handle"}'
+  elseif operation == "read_selection_members" then
+    local contextId, paths=argument:match('^([a-f0-9%-]+)\n(.+)$')
+    local target=contextId and contexts[contextId]
+    if not target then error("Unknown/expired context; inspect selection again") end
+    sameTarget(target)
+    local rows,seen={},{}
+    if paths:sub(-1)=="\n" or paths:find("\n\n",1,true) then error("Empty member path") end
+    for path in paths:gmatch("[^\n]+") do
+      if #rows>=16 or #path>192 or not path:match('^[A-Za-z_][A-Za-z0-9_/%[%]%.%-]*$') or seen[path] then
+        error("Use 1-16 distinct property paths, each at most 192 ASCII characters")
+      end
+      seen[path]=true
+      if hasMember(path) then
+        rows[#rows+1]='{"exists":true,"member":'..memberResult(path)..'}'
+      else
+        rows[#rows+1]='{"exists":false,"member":{"path":'..quote(path)..'}}'
+      end
+    end
+    sameTarget(target)
+    local result='{"contextId":'..quote(contextId)..',"entityId":'..scalar(target.entityId)..',"members":['..table.concat(rows,",")..']}'
+    if #result>48000 then error("Member response exceeds size limit") end
+    return result
   elseif operation == "scene" then
     local doc=guiGetActiveDocument()
     if type(doc)~="table" or not doc._CT_OBJECT_USERDATA_ then error("Open a world document") end
@@ -199,8 +338,7 @@ local function dispatch(operation, encoded, id)
     return '{"path":' .. quote(argument) .. ',"exists":' .. scalar(hasMember(argument)) .. '}'
   elseif operation == "get_member" then
     if not hasMember(argument) then error("Member does not exist in the current editor context") end
-    local value = edtGetMemberValue(argument)
-    return '{"path":' .. quote(argument) .. ',"valueType":' .. quote(type(value)) .. ',"value":' .. scalar(value) .. '}'
+    return memberResult(argument)
   end
   error("Unsupported operation")
 end
@@ -208,21 +346,41 @@ end
 -- Ignore the pre-existing request on startup. A restart must never replay a mutation.
 local _, initial = pcall(strLoadText_unsigned, base .. "request.txt")
 local lastId = type(initial) == "string" and initial:gsub("\r\n", "\n"):match("^SE_MCP/1\n([a-f0-9%-]+)\n") or nil
-print("[EditorMCP] bridge 0.4.0 started; conditional edit/undo; stop with globals.EditorMcpBridgeState.running=false")
+print("[EditorMCP] bridge 0.8.0 started; conditional edit/undo; stop with globals.EditorMcpBridgeState.running=false")
+-- Acknowledge only from the new listener: no request can fall into the reload gap.
+local pendingResponse, responseAttempts = nil, 0
+if reloadId then pendingResponse="SE_MCP/1\n"..reloadId.."\nok\n{\"reloaded\":true,\"tokensExpired\":true,\"bridgeVersion\":\"0.8.0\"}\n" end
+local function flushResponse()
+  if not pendingResponse then return end
+  responseAttempts=responseAttempts+1
+  -- strSaveText may log a Windows sharing violation without throwing. Verify
+  -- exact read-back and retry the cached response, never the executed operation.
+  pcall(strSaveText,base.."response.txt",pendingResponse)
+  local ok,observed=pcall(strLoadText_unsigned,base.."response.txt")
+  if ok and type(observed)=="string" and observed:gsub("\r\n","\n"):gsub("^\239\187\191","")==pendingResponse then
+    pendingResponse=nil;responseAttempts=0
+  elseif responseAttempts>=50 then
+    state.running=false
+    print("[EditorMCP] response delivery failed after 50 attempts; operation may have executed. Inspect state before restarting.")
+  end
+end
 while state.running do
-  local loaded, request = pcall(strLoadText_unsigned, base .. "request.txt")
-  if loaded and type(request) == "string" and #request <= 16384 then
-    request = request:gsub("\r\n", "\n")
-    local id, operation, encoded = request:match("^SE_MCP/1\n([a-f0-9%-]+)\n([a-z_]+)\n([0-9a-f]*)\n$")
-    if id and #id == 36 and id ~= lastId then
-      lastId = id
-      local ok, result = pcall(dispatch, operation, encoded, id)
-      if not ok then result = '{"error":' .. quote(result) .. '}' end
-      local response = "SE_MCP/1\n" .. id .. "\n" .. (ok and "ok" or "error") .. "\n" .. result .. "\n"
-      local saved, problem = pcall(strSaveText, base .. "response.txt", response)
-      if not saved then print("[EditorMCP] response failed: " .. tostring(problem)) end
+  flushResponse()
+  if not pendingResponse and state.running then
+    local loaded, request = pcall(strLoadText_unsigned, base .. "request.txt")
+    if loaded and type(request) == "string" and #request <= 16384 then
+      request = request:gsub("\r\n", "\n")
+      local id, operation, encoded = request:match("^SE_MCP/1\n([a-f0-9%-]+)\n([a-z_]+)\n([0-9a-f]*)\n$")
+      if id and #id == 36 and id ~= lastId then
+        lastId = id
+        local ok, result = pcall(dispatch, operation, encoded, id)
+        if not ok then result = '{"error":' .. quote(result) .. '}' end
+        local response = "SE_MCP/1\n" .. id .. "\n" .. (ok and "ok" or "error") .. "\n" .. result .. "\n"
+        if not state.reload then pendingResponse=response;flushResponse() end
+      end
     end
   end
   Wait(Delay(0.1))
 end
 print("[EditorMCP] bridge stopped")
+if state.reload then return dofile(base .. "bridge.lua") end
