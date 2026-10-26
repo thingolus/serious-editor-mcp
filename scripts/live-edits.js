@@ -20,7 +20,7 @@ async function call(name, args = {}) {
 }
 try {
   await client.connect(transport);
-  assert.equal((await call('editor_ping')).bridgeVersion, '0.4.0');
+  assert.equal((await call('editor_ping')).bridgeVersion, '0.5.0');
   const selected = await call('editor_selection');
   assert.equal(selected.name, expectedName, 'Wrong test entity selected');
   const originalName = await call('editor_read_member', { path: 'ep_strName' });

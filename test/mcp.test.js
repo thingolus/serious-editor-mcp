@@ -18,7 +18,7 @@ for (const mode of ['legacy', 'auto']) {
     t.after(() => client.close());
     await client.connect(transport);
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 17);
+    assert.equal(listed.tools.length, 21);
     assert.equal(listed.tools.some(tool => /execute|set_member/.test(tool.name)), false);
     const result = await client.callTool({ name: 'editor_status', arguments: {} });
     assert.equal(result.structuredContent.editorInstalled, true);
@@ -26,6 +26,16 @@ for (const mode of ['legacy', 'auto']) {
     const install = await client.callTool({ name: 'editor_install_bridge', arguments: {} });
     assert.equal(install.isError, true);
     assert.match(install.content[0].text, /disabled/);
+    for (const [name,args] of [
+      ['editor_reload_bridge',{acknowledgeTokenExpiry:true}],
+      ['editor_save_document',{documentId:'10000000-0000-4000-8000-000000000001',expectedSha256:'0'.repeat(64)}]
+    ]) {
+      const denied=await client.callTool({name,arguments:args});
+      assert.equal(denied.isError,true);
+      assert.match(denied.content[0].text,/disabled/);
+    }
+    const invalidDocument=await client.callTool({name:'editor_open_document',arguments:{path:'Content/../escape.wld'}});
+    assert.equal(invalidDocument.isError,true);
     for (const name of ['editor_apply_edit', 'editor_undo_edit']) {
       const denied = await client.callTool({ name, arguments: { editId: '10000000-0000-4000-8000-000000000001' } });
       assert.equal(denied.isError, true);

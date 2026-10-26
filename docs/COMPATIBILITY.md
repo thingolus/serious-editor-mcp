@@ -1,5 +1,38 @@
 # Compatibility evidence
 
+## v0.5.0: document workflow and transport recovery (2026-10-26)
+
+Windows, Node 24.19.0, Fusion 3897313, Editor 3897336. The following were
+verified on original consumer fixtures, with no stock files overwritten:
+
+| Check | Result |
+| --- | --- |
+| Open/activate | `edtOpenDocument` opens loose `.wld` and `.ep` files without file-dialog navigation. The return is a concrete document proxy. |
+| Two document interfaces | `guiGetActiveDocument` exposes an `IWorldDocument`; Open returns `CWorldDocument`. Their retained userdata differs. |
+| Native save | `edtSaveDocument` with the concrete Open handle saves the world. The earlier active-interface attempt was ineffective. |
+| Public stdio document flow | Open, inspect, rename locator, save with backup, stale hash rejection, checked name restoration and second save passed. |
+| Independent persistence | Closed the saved Stage 0 fixture through File > Close; MCP reopened it from disk and scene inventory preserved `RC_RouteStart`. No unsaved-change prompt appeared. |
+| Resource filename | Script `ep_pssScriptSource` userdata supports `GetFileName`; resolved the consumer's bound Stage 1 `Entry.lua`. Holder arrays remain unsupported. |
+| Bridge reload | Installed-source hash verification, fixed-path reload, acknowledgement from the new listener, immediate ping and expired document token rejection passed. |
+| Windows IPC | Live testing exposed `strSaveText` logging error 32 without throwing, losing a response. The bridge now verifies read-back and retries the cached response; fake-engine tests prove no repeated mutation. The final live document flow passed with this change. |
+| Offline coverage | 24 tests: actual Lua bridge, namespace/hash/backup checks, uncertain and unchanged saves, reload gating, response retries, stdio opt-in and existing package/help/edit coverage. |
+| Live smoke | 21 tools discovered; Lua 5.1 ping, missing-member/error recovery and 12 installed package names passed. |
+
+No dirty-state or native filename accessor has been established. `requestedPath`
+comes from the explicit Open request; the tool does not pretend it queried the
+editor's filename. Backups cover the single target file, not dependent resources.
+Resource `.ep` opening was tested; positive save/reopen mutation evidence is for
+the original `.wld` fixture. Other resource-specific save side effects are untested.
+Opening CommonSam.ep left a separate property panel context active: reading its
+documented bot-type field returned a missing-member error. Open/activate is not
+proof that generic member queries now address that resource's properties.
+
+`Command.StartDefaultSimNonExclusive` reached the engine's simulation path but
+reported no valid game title and initialization failure. Configuration setters
+attempted during investigation did not fix that state. This is a known missing
+capability, **not** a passing playtest API; no simulation tool is published.
+The following sections retain historical evidence and limitations of older versions.
+
 ## v0.4.1: installed help search (2026-10-24)
 
 Seventeen offline tests pass, including stdio help search in legacy/auto modes,

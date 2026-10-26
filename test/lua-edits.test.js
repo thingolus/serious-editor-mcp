@@ -11,16 +11,22 @@ const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const value = v => `${typeof v === 'boolean' ? 'b' : 's'}\n${Buffer.from(String(v)).toString('hex')}`;
 const preview = (context, path, before, after) => `${id(context)}\n${path}\n${value(before)}\n${value(after)}`;
 
-function run(steps, initial = '') {
+function run(steps, initial = '', bootstrap = '') {
   const L = lauxlib.luaL_newstate();
   lualib.luaL_openlibs(L);
   const responses = [];
   lua.lua_pushjsfunction(L, state => { responses.push(lua.lua_tojsstring(state, 2)); return 0; });
-  lua.lua_setglobal(L, to_luastring('strSaveText'));
+  lua.lua_setglobal(L, to_luastring('hostSaveText'));
   const requests = steps.map((step, i) => `{wire=${JSON.stringify(encodeRequest(id(i + 1), step.op, step.arg ?? ''))}, before=function() ${step.before ?? ''} end}`).join(',\n');
   const setup = `
     globals={}; math=nil; print=function() end
     mock={name='Locator001',sphere=0,autorun='SAT_ALWAYS',count=1,sets=0}
+    function strSaveText(p,t)
+      if mock.failedResponseWrites and mock.failedResponseWrites>0 then
+        mock.failedResponseWrites=mock.failedResponseWrites-1;mock.retryPending=true;return
+      end
+      mock.retryPending=false;mock.lastResponse=t;hostSaveText(p,t)
+    end
     local document={_CT_OBJECT_USERDATA_={}}
     local entity={_CT_OBJECT_USERDATA_={}}
     function entity:GetEntityID() return 1 end
@@ -28,6 +34,10 @@ function run(steps, initial = '') {
     function entity:GetEntityClassName() return 'CLocatorEntity' end
     function entity:GetPlacement() return {vx=2,vy=3,vz=4} end
     mock.document=document; mock.entity=entity
+    mock.nativeDocument={_CT_OBJECT_USERDATA_={}}
+    function edtOpenDocument(p) mock.opened=p; return mock.nativeDocument end
+    function edtSaveDocument(d) assert(d==mock.nativeDocument,'must save concrete handle'); mock.saves=(mock.saves or 0)+1 end
+    function dofile(p) mock.reloadPath=p end
     function guiGetActiveDocument() return mock.document end
     function edtCountSelectedEntityProperties() return mock.count end
     function edtGetSelectedEntityProperty() return mock.entity end
@@ -44,14 +54,15 @@ function run(steps, initial = '') {
     function Delay() end
     local requests={${requests}}
     local index=1; local first=true
-    function strLoadText_unsigned()
+    function strLoadText_unsigned(p)
+      if p=='Content/EditorMcp/response.txt' then return mock.lastResponse or '' end
       if first then first=false; return ${JSON.stringify(initial)} end
       local request=requests[index]; request.before(); return request.wire
     end
-    function Wait() index=index+1; if index>#requests then globals.EditorMcpBridgeState.running=false end end
+    function Wait() if not mock.retryPending then index=index+1 end; if index>#requests then globals.EditorMcpBridgeState.running=false end end
   `;
   try {
-    const code = lauxlib.luaL_dostring(L, to_luastring(setup + '\n' + source));
+    const code = lauxlib.luaL_dostring(L, to_luastring(setup + '\n' + bootstrap + '\n' + source));
     assert.equal(code, lua.LUA_OK, lua.lua_tojsstring(L, -1));
     lua.lua_getglobal(L, to_luastring('mock'));
     const mock = {};
@@ -60,7 +71,13 @@ function run(steps, initial = '') {
       mock[key] = lua.lua_type(L, -1) === lua.LUA_TNUMBER ? lua.lua_tonumber(L, -1) : lua.lua_tojsstring(L, -1);
       lua.lua_pop(L, 1);
     }
-    return { mock, responses: responses.map(text => {
+    const operations={};
+    for(const key of ['saves','opened','reloadPath']) {
+      lua.lua_getfield(L,-1,to_luastring(key));
+      operations[key]=lua.lua_type(L,-1)===lua.LUA_TNUMBER?lua.lua_tonumber(L,-1):lua.lua_tojsstring(L,-1);
+      lua.lua_pop(L,1);
+    }
+    return { mock, operations, responses: responses.map(text => {
       const lines = text.split('\n'); return { status: lines[2], ...JSON.parse(lines[3]) };
     }) };
   } finally { lua.lua_close(L); }
@@ -78,6 +95,37 @@ test('actual Lua bridge previews, applies once, reports and conditionally undoes
   assert.equal(result.responses[4].status, 'applied');
   assert.equal(result.responses[6].status, 'undone');
   assert.deepEqual(result.mock, { name: 'Locator001', sphere: 0, sets: 2 });
+});
+
+test('documents retain concrete save handles and reject invalid paths, expired tokens and changed active context', () => {
+  const result=run([
+    {op:'open_document',arg:'Content/Fixture/Test.wld'},
+    {op:'document',arg:id(1)},
+    {op:'save_document',arg:id(1)},
+    {op:'open_document',arg:'Content/../Escape.wld'},
+    {op:'open_document',arg:'Content/Fixture/code.lua'},
+    {op:'save_document',arg:id(99)},
+    {op:'save_document',arg:id(1),before:'mock.document={_CT_OBJECT_USERDATA_={}}'}
+  ]);
+  assert.equal(result.responses[0].requestedPath,'Content/Fixture/Test.wld');
+  assert.equal(result.responses[1].active,true);
+  assert.equal(result.responses[2].saveRequested,true);
+  assert.ok(result.responses.slice(3).every(r=>r.error));
+  assert.equal(result.operations.saves,1);
+  assert.equal(result.mock.sets,0);
+});
+
+test('reload requires expiry acknowledgement, uses a fixed path and acknowledges only from the replacement listener', () => {
+  const denied=run([{op:'reload_bridge',arg:'something else'}]);
+  assert.match(denied.responses[0].error,/acknowledgement/);
+  assert.equal(denied.operations.reloadPath,null);
+  const scheduled=run([{op:'reload_bridge',arg:'expire-contexts'}]);
+  assert.equal(scheduled.responses.length,0);
+  assert.equal(scheduled.operations.reloadPath,'Content/EditorMcp/bridge.lua');
+  const started=run([{op:'ping'}],'',`globals.EditorMcpBridgeState={running=false,reloadId='${id(99)}'}`);
+  assert.equal(started.responses[0].reloaded,true);
+  assert.equal(started.responses[0].tokensExpired,true);
+  assert.equal(started.responses[1].bridgeVersion,'0.5.0');
 });
 
 test('scene snapshots restore selection and reject stale documents and removed entities', () => {
@@ -160,6 +208,18 @@ test('Lua marks partial setter failure uncertain and refuses replay or undo', ()
   assert.match(result.responses[2].error, /uncertain/);
   assert.equal(result.responses[5].status, 'uncertain');
   assert.equal(result.mock.sets, 1);
+});
+
+test('response sharing failures retry delivery without executing an edit twice', () => {
+  const result=run([
+    {op:'selection'},
+    {op:'preview_edit',arg:preview(1,'ep_strName','Locator001','RC_Start')},
+    {op:'apply_edit',arg:id(2),before:'mock.failedResponseWrites=2'},
+    {op:'edit_status',arg:id(2)}
+  ]);
+  assert.equal(result.responses[2].status,'applied');
+  assert.equal(result.responses[3].status,'applied');
+  assert.equal(result.mock.sets,1);
 });
 
 test('Lua refuses unverified paths, wrong types, controls, stale contexts and startup requests', () => {

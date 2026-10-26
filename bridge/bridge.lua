@@ -6,6 +6,7 @@ if type(edtGetMemberValue) ~= "function" then
 end
 
 local base = "Content/EditorMcp/"
+local reloadId = globals.EditorMcpBridgeState and globals.EditorMcpBridgeState.reloadId
 local state = { running = true }
 -- A reload retires the old coroutine without stacking multiple listeners.
 if globals.EditorMcpBridgeState then globals.EditorMcpBridgeState.running = false end
@@ -44,6 +45,25 @@ end
 local contexts, edits = {}, {}
 local contextOrder, editCount = {}, 0
 local scenes, sceneOrder = {}, {}
+local documents, documentOrder = {}, {}
+local function currentDocument()
+  local doc = guiGetActiveDocument()
+  if type(doc) ~= "table" or not doc._CT_OBJECT_USERDATA_ then error("No active editor document") end
+  return doc
+end
+local function documentResult(id, path, nativeDocument)
+  local doc = currentDocument()
+  documents[id] = { document = doc, path = path, nativeDocument = nativeDocument }
+  documentOrder[#documentOrder+1] = id
+  if #documentOrder > 32 then documents[documentOrder[1]] = nil; table.remove(documentOrder, 1) end
+  return '{"documentId":'..quote(id)..',"requestedPath":'..scalar(path)..',"documentPath":null,"pathSource":"open request","dirty":null}'
+end
+local function checkedDocument(id)
+  local record=documents[id]
+  if not record or not record.nativeDocument then error("Unknown document token; open it through editor_open_document again") end
+  if currentDocument()._CT_OBJECT_USERDATA_ ~= record.document._CT_OBJECT_USERDATA_ then error("Active document changed; open the intended document again") end
+  return record
+end
 local function enumerateScene()
   local previous, entities, seen = {}, {}, {}
   for i=0,edtCountSelectedEntityProperties()-1 do previous[#previous+1]=edtGetSelectedEntityProperty(i) end
@@ -131,9 +151,29 @@ local function dispatch(operation, encoded, id)
   local argument = unhex(encoded)
   if argument:find("%z") then error("Invalid property path") end
   if operation == "ping" then
-    return '{"bridgeVersion":"0.4.0","luaVersion":' .. quote(_VERSION) ..
+    return '{"bridgeVersion":"0.5.0","luaVersion":' .. quote(_VERSION) ..
       ',"readOnly":false,"undoMode":"conditional-property-restore","getMember":' .. tostring(type(edtGetMemberValue) == "function") ..
       ',"hasMember":' .. tostring(type(edtHasMemberValue) == "function") .. '}'
+  elseif operation == "document" then
+    local record=checkedDocument(argument)
+    return '{"documentId":'..quote(argument)..',"active":true,"requestedPath":'..quote(record.path)..',"documentPath":null,"dirty":null}'
+  elseif operation == "open_document" then
+    if not argument:match('^Content/[A-Za-z0-9_ /%.%-]+$') or argument:find('..',1,true) or argument:find('//',1,true) or
+      not (argument:match('%.wld$') or argument:match('%.ep$')) then error("Invalid world/resource content path") end
+    local result = edtOpenDocument(argument)
+    if type(result) ~= "table" or not result._CT_OBJECT_USERDATA_ then error("Open did not return a document handle") end
+    return documentResult(id, argument, result)
+  elseif operation == "save_document" then
+    local record = checkedDocument(argument)
+    -- guiGetActiveDocument returns an interface, not the concrete handle required here.
+    edtSaveDocument(record.nativeDocument)
+    return '{"saveRequested":true,"saved":null}'
+  elseif operation == "reload_bridge" then
+    if argument ~= "expire-contexts" then error("Reload requires explicit context-expiry acknowledgement") end
+    state.reloadId = id
+    state.reload = true
+    state.running = false
+    return '{}'
   elseif operation == "selection" then
     local target = selection()
     contexts[id] = target
@@ -200,7 +240,12 @@ local function dispatch(operation, encoded, id)
   elseif operation == "get_member" then
     if not hasMember(argument) then error("Member does not exist in the current editor context") end
     local value = edtGetMemberValue(argument)
-    return '{"path":' .. quote(argument) .. ',"valueType":' .. quote(type(value)) .. ',"value":' .. scalar(value) .. '}'
+    local resourcePath=nil
+    if type(value)=="userdata" then
+      local ok,path=pcall(function() return value:GetFileName() end)
+      if ok and type(path)=="string" then resourcePath=path end
+    end
+    return '{"path":' .. quote(argument) .. ',"valueType":' .. quote(type(value)) .. ',"value":' .. scalar(value) .. ',"resourcePath":'..scalar(resourcePath)..'}'
   end
   error("Unsupported operation")
 end
@@ -208,21 +253,41 @@ end
 -- Ignore the pre-existing request on startup. A restart must never replay a mutation.
 local _, initial = pcall(strLoadText_unsigned, base .. "request.txt")
 local lastId = type(initial) == "string" and initial:gsub("\r\n", "\n"):match("^SE_MCP/1\n([a-f0-9%-]+)\n") or nil
-print("[EditorMCP] bridge 0.4.0 started; conditional edit/undo; stop with globals.EditorMcpBridgeState.running=false")
+print("[EditorMCP] bridge 0.5.0 started; conditional edit/undo; stop with globals.EditorMcpBridgeState.running=false")
+-- Acknowledge only from the new listener: no request can fall into the reload gap.
+local pendingResponse, responseAttempts = nil, 0
+if reloadId then pendingResponse="SE_MCP/1\n"..reloadId.."\nok\n{\"reloaded\":true,\"tokensExpired\":true,\"bridgeVersion\":\"0.5.0\"}\n" end
+local function flushResponse()
+  if not pendingResponse then return end
+  responseAttempts=responseAttempts+1
+  -- strSaveText may log a Windows sharing violation without throwing. Verify
+  -- exact read-back and retry the cached response, never the executed operation.
+  pcall(strSaveText,base.."response.txt",pendingResponse)
+  local ok,observed=pcall(strLoadText_unsigned,base.."response.txt")
+  if ok and type(observed)=="string" and observed:gsub("\r\n","\n"):gsub("^\239\187\191","")==pendingResponse then
+    pendingResponse=nil;responseAttempts=0
+  elseif responseAttempts>=50 then
+    state.running=false
+    print("[EditorMCP] response delivery failed after 50 attempts; operation may have executed. Inspect state before restarting.")
+  end
+end
 while state.running do
-  local loaded, request = pcall(strLoadText_unsigned, base .. "request.txt")
-  if loaded and type(request) == "string" and #request <= 16384 then
-    request = request:gsub("\r\n", "\n")
-    local id, operation, encoded = request:match("^SE_MCP/1\n([a-f0-9%-]+)\n([a-z_]+)\n([0-9a-f]*)\n$")
-    if id and #id == 36 and id ~= lastId then
-      lastId = id
-      local ok, result = pcall(dispatch, operation, encoded, id)
-      if not ok then result = '{"error":' .. quote(result) .. '}' end
-      local response = "SE_MCP/1\n" .. id .. "\n" .. (ok and "ok" or "error") .. "\n" .. result .. "\n"
-      local saved, problem = pcall(strSaveText, base .. "response.txt", response)
-      if not saved then print("[EditorMCP] response failed: " .. tostring(problem)) end
+  flushResponse()
+  if not pendingResponse and state.running then
+    local loaded, request = pcall(strLoadText_unsigned, base .. "request.txt")
+    if loaded and type(request) == "string" and #request <= 16384 then
+      request = request:gsub("\r\n", "\n")
+      local id, operation, encoded = request:match("^SE_MCP/1\n([a-f0-9%-]+)\n([a-z_]+)\n([0-9a-f]*)\n$")
+      if id and #id == 36 and id ~= lastId then
+        lastId = id
+        local ok, result = pcall(dispatch, operation, encoded, id)
+        if not ok then result = '{"error":' .. quote(result) .. '}' end
+        local response = "SE_MCP/1\n" .. id .. "\n" .. (ok and "ok" or "error") .. "\n" .. result .. "\n"
+        if not state.reload then pendingResponse=response;flushResponse() end
+      end
     end
   end
   Wait(Delay(0.1))
 end
 print("[EditorMCP] bridge stopped")
+if state.reload then return dofile(base .. "bridge.lua") end

@@ -38,14 +38,16 @@ Verified: name and Sphere preview/apply/read-back/conditional-undo through MCP,
 stale-value rejection, mutation opt-in and saved fixture reopen. Native undo-stack
 integration is not implemented: the observed setter did not add an undo entry.
 The tool restores its own previous value after checking the target and current
-value. Saving is manual; the scripted save attempt did not update the file.
+value. v0.5 adds guarded saves of existing project documents using the concrete
+handle returned by Open. The earlier active-interface save was ineffective.
 
 1. Verify the editor's setter and undo/transaction APIs in the disposable world.
 2. Add a narrow property-edit operation with an explicit target and expected old
    value, input limits, preview and an opt-in mutation capability.
 3. Demonstrate edit, read-back and undo. Test selection changes, stale values,
    invalid types and failure midway through an operation.
-4. Verify explicit save-as into a chosen project namespace before adding saving.
+4. Keep Save As/new-file authoring deferred until verified. Existing-file saves
+   require an explicit original namespace, expected disk hash and backup.
    Never overwrite a stock world as a side effect of an editing tool.
 
 **Pass:** the intended property changes once, undo restores it, and reopening a
@@ -113,3 +115,17 @@ shared bot-type member needed for a valid expendable NPC configuration. The
 consumer authored that configuration through the editor; resource creation and
 binding are still outside MCP. Search preserves owning classes and marks results
 as documentation only. No game documentation or assets are bundled here.
+
+### v0.5 shared progress (2026-10-26)
+
+Open/activate, concrete-handle saves, backup/hash checks, Script resource filename
+inspection and bridge reload now have live evidence. The independent close/reopen
+check preserved the consumer fixture's restored locator name. Repeated file-dialog
+navigation and bridge-menu reloads are no longer needed after initial startup.
+The transport also handles transient Windows file-sharing failures without
+replaying a mutation. See EDITOR_WORKFLOW.md for recovery and compatibility limits.
+
+Next: nested resource-holder inspection, supported resource reassignment and
+reliable simulation configuration/state/start/stop. The attempted native test
+command failed on missing title configuration; retain UI/CLI workflows until the
+complete lifecycle is proven. Consumer Stage 1 gameplay remains incomplete.
