@@ -14,6 +14,12 @@ was invalid. This establishes nested leaf reads, not whole-holder serialization
 or resource assignment. Fake-engine tests also reject invalid/duplicate/oversized
 path sets and context changes during a read, with no writes or partial results.
 
+Follow-up regression checks found old v0.6 version assertions in the document,
+edit and simulation scripts. Those three scripts now obtain the expected version
+from package.json. All three passed against v0.7: two guarded saves with name
+restoration and stale-hash rejection, locator name/Sphere apply/undo, and three
+nonexclusive simulation cycles with unchanged source file and restored preference.
+
 The consumer's `dofile`-loaded gameplay probe picked up edits on subsequent
 simulations without restarting the editor. Its directly bound entry resource had
 previously stayed cached. No general resource/script-refresh operation is exposed.

@@ -1,5 +1,6 @@
 // Explicit opt-in test. Runs the supplied original world's scripts three times.
 import assert from 'node:assert/strict';
+import metadata from '../package.json' with {type:'json'};
 import {readFile,stat,open} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
@@ -10,7 +11,7 @@ const [world]=process.argv.slice(2);
 const root=process.env.SERIOUS_EDITOR_ROOT;
 if(!world||!root||process.env.SERIOUS_EDITOR_ALLOW_MUTATION!=='1'||!process.env.SERIOUS_EDITOR_PROJECT_ROOT)
   throw new Error('Usage: node scripts/live-simulation.js Content/YourMod/Test.wld; set root, project root and mutation opt-in.');
-const client=new Client({name:'serious-editor-live-simulation',version:'0.6.0'});
+const client=new Client({name:'serious-editor-live-simulation',version:metadata.version});
 const transport=new StdioClientTransport({command:process.execPath,args:[fileURLToPath(new URL('../src/index.js',import.meta.url))],
   env:{...getDefaultEnvironment(),SERIOUS_EDITOR_ROOT:root,SERIOUS_EDITOR_PROJECT_ROOT:process.env.SERIOUS_EDITOR_PROJECT_ROOT,SERIOUS_EDITOR_ALLOW_MUTATION:'1'}});
 const call=async(name,args={})=>{
@@ -38,7 +39,7 @@ async function waitLog(offset,text){
 let active;
 try{
   await client.connect(transport);
-  assert.equal((await call('editor_ping')).bridgeVersion,'0.6.0');
+  assert.equal((await call('editor_ping')).bridgeVersion,metadata.version);
   const original=await readFile(path.join(root,world));
   for(let i=0;i<3;i++){
     const doc=await call('editor_open_document',{path:world});

@@ -1,5 +1,6 @@
 // Opt-in mutation test on a disposable, editor-authored world. Restores the name.
 import assert from 'node:assert/strict';
+import metadata from '../package.json' with {type:'json'};
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/client';
 import {StdioClientTransport,getDefaultEnvironment} from '@modelcontextprotocol/client/stdio';
@@ -7,7 +8,7 @@ import {StdioClientTransport,getDefaultEnvironment} from '@modelcontextprotocol/
 const [path,entityText,expectedName]=process.argv.slice(2);
 if(!path||!/^\d+$/.test(entityText??'')||!expectedName)throw new Error('Usage: node scripts/live-documents.js Content/YourMod/Test.wld entityId expectedName');
 if(process.env.SERIOUS_EDITOR_ALLOW_MUTATION!=='1'||!process.env.SERIOUS_EDITOR_PROJECT_ROOT)throw new Error('Set mutation opt-in and an original project root.');
-const client=new Client({name:'serious-editor-live-documents',version:'0.6.0'});
+const client=new Client({name:'serious-editor-live-documents',version:metadata.version});
 const transport=new StdioClientTransport({command:process.execPath,args:[fileURLToPath(new URL('../src/index.js',import.meta.url))],
   env:{...getDefaultEnvironment(),SERIOUS_EDITOR_ROOT:process.env.SERIOUS_EDITOR_ROOT,
     SERIOUS_EDITOR_PROJECT_ROOT:process.env.SERIOUS_EDITOR_PROJECT_ROOT,SERIOUS_EDITOR_ALLOW_MUTATION:'1'}});
@@ -37,7 +38,7 @@ try{
   assert.equal((await call('editor_read_member',{path:'ep_strName'})).value,expectedName);
   const reload=await call('editor_reload_bridge',{acknowledgeTokenExpiry:true});
   assert.equal(reload.reloaded,true);
-  assert.equal((await call('editor_ping')).bridgeVersion,'0.6.0');
+  assert.equal((await call('editor_ping')).bridgeVersion,metadata.version);
   const expired=await client.callTool({name:'editor_document',arguments:{documentId:opened.documentId}});
   assert.equal(expired.isError,true);
   const reopened=await call('editor_open_document',{path});
